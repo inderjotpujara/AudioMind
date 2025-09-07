@@ -259,7 +259,7 @@ export function EnhancedAudioRecorder({
           icon: MicrophoneIcon,
           label: 'Start Recording',
           onClick: startRecording,
-          className: 'bg-red-500 hover:bg-red-600 text-white',
+          className: 'bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700 text-white border-2 border-red-400 dark:border-red-500',
           disabled: false
         }
       case 'recording':
@@ -267,7 +267,7 @@ export function EnhancedAudioRecorder({
           icon: StopIcon,
           label: 'Stop Recording',
           onClick: stopRecording,
-          className: 'bg-red-600 hover:bg-red-700 text-white animate-pulse',
+          className: 'bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-800 text-white animate-pulse border-2 border-red-500 dark:border-red-600',
           disabled: false
         }
       case 'paused':
@@ -275,7 +275,7 @@ export function EnhancedAudioRecorder({
           icon: PlayIcon,
           label: 'Resume Recording',
           onClick: resumeRecording,
-          className: 'bg-orange-500 hover:bg-orange-600 text-white',
+          className: 'bg-orange-500 hover:bg-orange-600 dark:bg-orange-600 dark:hover:bg-orange-700 text-white border-2 border-orange-400 dark:border-orange-500',
           disabled: false
         }
       case 'stopped':
@@ -283,7 +283,7 @@ export function EnhancedAudioRecorder({
           icon: CheckCircleIcon,
           label: 'Recording Complete',
           onClick: () => {},
-          className: 'bg-green-500 text-white cursor-default',
+          className: 'bg-green-500 dark:bg-green-600 text-white cursor-default border-2 border-green-400 dark:border-green-500',
           disabled: true
         }
       default:
@@ -291,7 +291,7 @@ export function EnhancedAudioRecorder({
           icon: MicrophoneIcon,
           label: 'Start Recording',
           onClick: startRecording,
-          className: 'bg-gray-500 text-white',
+          className: 'bg-gray-500 dark:bg-gray-600 text-white border-2 border-gray-400 dark:border-gray-500',
           disabled: true
         }
     }
@@ -400,10 +400,10 @@ export function EnhancedAudioRecorder({
               size="sm"
               onClick={() => setInputLanguage('auto')}
               className={cn(
-                "transition-all duration-200",
+                "transition-all duration-200 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300",
                 inputLanguage === 'auto' 
-                  ? 'bg-blue-100 border-blue-300 text-blue-700 shadow-sm' 
-                  : 'hover:bg-gray-50'
+                  ? 'bg-blue-100 dark:bg-blue-950/30 border-blue-300 dark:border-blue-600 text-blue-700 dark:text-blue-400 shadow-sm' 
+                  : 'hover:bg-gray-50 dark:hover:bg-gray-800'
               )}
               disabled={recordingState === 'recording' || isProcessing}
             >
@@ -417,10 +417,10 @@ export function EnhancedAudioRecorder({
               size="sm"
               onClick={() => setInputLanguage('en-hi')}
               className={cn(
-                "transition-all duration-200",
+                "transition-all duration-200 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300",
                 inputLanguage === 'en-hi' 
-                  ? 'bg-purple-100 border-purple-300 text-purple-700 shadow-sm' 
-                  : 'hover:bg-gray-50'
+                  ? 'bg-purple-100 dark:bg-purple-950/30 border-purple-300 dark:border-purple-600 text-purple-700 dark:text-purple-400 shadow-sm' 
+                  : 'hover:bg-gray-50 dark:hover:bg-gray-800'
               )}
               disabled={recordingState === 'recording' || isProcessing}
             >
@@ -439,10 +439,10 @@ export function EnhancedAudioRecorder({
                 size="sm"
                 onClick={() => setInputLanguage(lang.code)}
                 className={cn(
-                  "transition-all duration-200",
+                  "transition-all duration-200 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300",
                   inputLanguage === lang.code 
-                    ? 'bg-green-100 border-green-300 text-green-700 shadow-sm' 
-                    : 'hover:bg-gray-50'
+                    ? 'bg-green-100 dark:bg-green-950/30 border-green-300 dark:border-green-600 text-green-700 dark:text-green-400 shadow-sm' 
+                    : 'hover:bg-gray-50 dark:hover:bg-gray-800'
                 )}
                 disabled={recordingState === 'recording' || isProcessing}
               >
@@ -465,7 +465,7 @@ export function EnhancedAudioRecorder({
           {/* Pulse animation for recording */}
           {recordingState === 'recording' && (
             <motion.div
-              className="absolute inset-0 rounded-full bg-red-400"
+              className="absolute inset-0 rounded-full bg-red-400 dark:bg-red-500"
               animate={{
                 scale: [1, 1.2, 1],
                 opacity: [0.3, 0.1, 0.3],
@@ -492,8 +492,8 @@ export function EnhancedAudioRecorder({
               className={cn(
                 'w-28 h-28 rounded-full flex flex-col items-center justify-center text-sm font-medium transition-all duration-300 shadow-lg',
                 buttonConfig.className,
-                recordingState === 'recording' && 'shadow-red-200 shadow-xl',
-                recordingState === 'stopped' && 'shadow-green-200 shadow-xl'
+                recordingState === 'recording' && 'shadow-red-200 dark:shadow-red-900/50 shadow-xl',
+                recordingState === 'stopped' && 'shadow-green-200 dark:shadow-green-900/50 shadow-xl'
               )}
             >
               <Icon className="w-10 h-10 mb-1" />
