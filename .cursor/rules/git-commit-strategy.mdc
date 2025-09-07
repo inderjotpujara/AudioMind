@@ -1,0 +1,481 @@
+---
+description: Define Git commit strategies and best practices for Audio Journal PWA
+globs: **/*
+alwaysApply: true
+---
+
+# Git Commit Strategy - Audio Journal PWA
+
+## Overview
+
+This document defines the Git commit strategy and best practices for the Audio Journal PWA project. Consistent commit messages and workflow patterns ensure maintainability, traceability, and effective collaboration.
+
+## Commit Message Conventions
+
+### Conventional Commits Format
+
+All commit messages must follow the [Conventional Commits](https://www.conventionalcommits.org/) specification:
+
+```bash
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+### Commit Types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `feat` | New feature | `feat: add audio file validation` |
+| `fix` | Bug fix | `fix: resolve transcription API timeout` |
+| `docs` | Documentation | `docs: update API integration guide` |
+| `style` | Code style changes | `style: format audio processing utils` |
+| `refactor` | Code refactoring | `refactor: simplify state management` |
+| `test` | Testing | `test: add transcription service tests` |
+| `chore` | Maintenance | `chore: update dependencies` |
+| `perf` | Performance | `perf: optimize audio file loading` |
+| `ci` | CI/CD | `ci: add automated testing workflow` |
+| `build` | Build system | `build: update Vite configuration` |
+
+### Scope Guidelines
+
+Use meaningful scopes that relate to project components:
+
+```bash
+# Component scopes
+feat(audio-player): add waveform visualization
+fix(transcription): handle API rate limiting
+test(audio-upload): validate file size limits
+
+# Feature scopes
+feat(speech-api): implement speaker diarization
+fix(nl-api): resolve sentiment analysis errors
+docs(api-keys): update security guidelines
+
+# Infrastructure scopes
+chore(deps): update React to v18.2.0
+ci(workflow): add E2E testing pipeline
+build(vite): optimize bundle splitting
+```
+
+### Commit Message Examples
+
+#### Good Examples
+
+```bash
+feat: implement real-time audio recording
+
+- Add MediaRecorder API integration
+- Support multiple audio formats
+- Include recording duration limits
+- Add error handling for permissions
+
+Closes #123
+
+feat(audio-upload): add drag-and-drop support
+
+- Implement dragover/dragleave visual feedback
+- Validate dropped files on drop event
+- Support multiple file selection
+- Add file type and size validation
+
+BREAKING CHANGE: File validation now rejects unsupported formats
+```
+
+#### Bad Examples
+
+```bash
+# Too vague
+fix: bug
+
+# Too generic
+update code
+
+# Multiple changes in one commit
+feat: add upload and transcription
+
+# No conventional format
+Added new audio player component
+```
+
+## Branch Naming Strategy
+
+### Branch Types
+
+| Branch Type | Naming Pattern | Example |
+|-------------|----------------|---------|
+| Feature | `feature/description` | `feature/audio-waveform` |
+| Bug Fix | `fix/description` | `fix/api-timeout` |
+| Documentation | `docs/description` | `docs/api-integration` |
+| Refactor | `refactor/description` | `refactor/state-management` |
+| Hotfix | `hotfix/description` | `hotfix/critical-bug` |
+| Release | `release/v1.2.0` | `release/v2.0.0` |
+
+### Branch Naming Rules
+
+```bash
+# Use lowercase with hyphens
+feature/audio-file-validation
+fix/google-api-rate-limiting
+
+# Be descriptive but concise
+feature/speaker-diarization-support
+fix/transcription-confidence-scoring
+
+# Include issue/ticket numbers when applicable
+feature/123-add-offline-mode
+fix/456-resolve-memory-leak
+
+# Use imperative mood for descriptions
+feature/add-user-preferences
+fix/handle-network-errors
+```
+
+## Git Workflow Patterns
+
+### Feature Development Workflow
+
+```bash
+# 1. Create feature branch from main
+git checkout main
+git pull origin main
+git checkout -b feature/audio-processing
+
+# 2. Make regular commits with conventional format
+git add .
+git commit -m "feat: implement audio file validation"
+git commit -m "test: add validation test cases"
+
+# 3. Keep branch updated
+git fetch origin
+git rebase origin/main
+
+# 4. Push feature branch
+git push origin feature/audio-processing
+
+# 5. Create pull request
+# - Use descriptive title
+# - Provide detailed description
+# - Reference related issues
+# - Request appropriate reviewers
+```
+
+### Pull Request Guidelines
+
+#### PR Title Format
+```
+type(scope): description
+```
+
+Examples:
+```
+feat(audio): add real-time transcription
+fix(api): resolve authentication timeout
+docs(readme): update installation guide
+```
+
+#### PR Description Template
+
+```markdown
+## Description
+Brief description of the changes and their purpose.
+
+## Changes Made
+- [ ] Feature: Added audio file validation
+- [ ] Fix: Resolved API rate limiting issues
+- [ ] Test: Added comprehensive test coverage
+- [ ] Docs: Updated API documentation
+
+## Testing
+- [ ] Unit tests pass
+- [ ] Integration tests pass
+- [ ] E2E tests pass
+- [ ] Manual testing completed
+
+## Screenshots (if applicable)
+<!-- Add screenshots of UI changes -->
+
+## Related Issues
+Closes #123, #124
+
+## Breaking Changes
+<!-- List any breaking changes -->
+
+## Checklist
+- [ ] Code follows project conventions
+- [ ] Tests are included
+- [ ] Documentation is updated
+- [ ] Security implications reviewed
+```
+
+#### PR Review Process
+
+1. **Automated Checks**: CI/CD must pass
+2. **Code Review**: At least one reviewer approval required
+3. **Testing**: All tests must pass
+4. **Merge**: Squash merge with conventional commit message
+
+### Commit Frequency and Scope
+
+#### When to Commit
+
+```bash
+# Commit frequently for logical units of work
+git add src/components/AudioPlayer.tsx
+git commit -m "feat(audio-player): implement basic playback controls"
+
+git add src/components/AudioPlayer.tsx
+git commit -m "feat(audio-player): add waveform visualization"
+
+# Don't commit incomplete work
+# ❌ Bad: Work in progress
+git commit -m "WIP: started audio player"
+
+# ✅ Good: Complete logical changes
+git commit -m "feat(audio-player): add seek functionality"
+```
+
+#### Commit Granularity
+
+```bash
+# Too granular (avoid)
+git commit -m "add import statement"
+git commit -m "add function signature"
+git commit -m "add function body"
+
+# Just right (recommended)
+git commit -m "feat(audio-validation): implement file type checking
+
+- Add supported format validation
+- Include MIME type verification
+- Add user-friendly error messages"
+
+# Too large (avoid)
+git commit -m "feat: implement entire audio processing pipeline"
+```
+
+## Breaking Changes
+
+### Handling Breaking Changes
+
+```bash
+# Mark breaking changes in commit footer
+feat: update audio API interface
+
+BREAKING CHANGE: remove deprecated `audioFormat` parameter,
+use `mimeType` instead
+
+# Or use exclamation mark in type
+feat!: update transcription API response format
+
+BREAKING CHANGE: transcript property is now nested under
+alternatives[0].transcript
+```
+
+### Version Management
+
+```bash
+# Major version (breaking changes)
+feat!: redesign component API
+# Results in: v2.0.0
+
+# Minor version (new features)
+feat: add offline mode
+# Results in: v1.1.0
+
+# Patch version (bug fixes)
+fix: resolve memory leak
+# Results in: v1.0.1
+```
+
+## Merge Strategies
+
+### Merge vs. Squash vs. Rebase
+
+| Strategy | When to Use | Command |
+|----------|-------------|---------|
+| **Merge** | Preserving complete history | `git merge feature/branch` |
+| **Squash** | Clean history for small features | `git merge --squash feature/branch` |
+| **Rebase** | Linear history, avoiding merge commits | `git rebase main` |
+
+### Recommended Strategy
+
+```bash
+# For feature branches: Squash and merge
+git checkout main
+git merge --squash feature/audio-upload
+git commit -m "feat: implement audio file upload
+
+- Add drag-and-drop interface
+- Implement file validation
+- Support multiple audio formats"
+
+# For long-running branches: Rebase
+git checkout feature/long-term-work
+git rebase main
+```
+
+## Git Hooks and Automation
+
+### Pre-commit Hooks
+
+```bash
+# Install husky for Git hooks
+npm install --save-dev husky lint-staged
+
+# Setup pre-commit hook
+npx husky add .husky/pre-commit "npm run lint-staged"
+
+# Configure lint-staged in package.json
+{
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,css,md}": [
+      "prettier --write"
+    ]
+  }
+}
+```
+
+### Commit Message Linting
+
+```bash
+# Install commitlint
+npm install --save-dev @commitlint/cli @commitlint/config-conventional
+
+# Create commitlint.config.js
+module.exports = {
+  extends: ['@commitlint/config-conventional'],
+  rules: {
+    'type-enum': [
+      2,
+      'always',
+      [
+        'build',
+        'chore',
+        'ci',
+        'docs',
+        'feat',
+        'fix',
+        'perf',
+        'refactor',
+        'revert',
+        'style',
+        'test'
+      ]
+    ],
+    'subject-case': [2, 'always', 'lower-case'],
+    'subject-max-length': [2, 'always', 72],
+    'body-max-line-length': [2, 'always', 100]
+  }
+};
+```
+
+## Repository Organization
+
+### Directory Structure
+
+```
+# Project root structure
+├── .cursor/           # Cursor AI rules
+├── .github/           # GitHub templates and workflows
+├── .husky/            # Git hooks
+├── docs/              # Documentation
+├── public/            # Static assets
+├── src/               # Source code
+├── tests/             # Test files
+└── tools/             # Build and development tools
+```
+
+### File Organization
+
+```bash
+# Keep related changes together
+src/
+├── components/
+│   ├── audio/         # Audio-related components
+│   ├── ui/           # Reusable UI components
+│   └── layout/       # Layout components
+├── hooks/
+│   ├── audio/        # Audio-related hooks
+│   └── ui/           # UI-related hooks
+└── lib/
+    ├── audio/        # Audio processing utilities
+    └── api/          # API integration
+```
+
+## CI/CD Integration
+
+### GitHub Actions Workflow
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint code
+        run: npm run lint
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Build project
+        run: npm run build
+
+  release:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+## Best Practices Summary
+
+### Daily Workflow
+1. **Pull latest changes** before starting work
+2. **Create descriptive branch** names
+3. **Make frequent, focused commits** with conventional messages
+4. **Write tests** for new features
+5. **Keep branches updated** with main
+6. **Create clear pull requests** with detailed descriptions
+7. **Review code thoroughly** before merging
+
+### Commit Message Checklist
+- [ ] Follows conventional commit format
+- [ ] Has meaningful type and description
+- [ ] Includes scope when applicable
+- [ ] Has clear, imperative language
+- [ ] References issues/tickets when relevant
+- [ ] Marks breaking changes appropriately
+- [ ] Body explains what and why, not just how
+
+### Branch Management
+- [ ] Branch name follows naming convention
+- [ ] Regular rebasing with main branch
+- [ ] No long-lived branches without reason
+- [ ] Clean branch history before merge
+- [ ] Delete branches after successful merge
+
+This Git commit strategy ensures maintainable, traceable, and collaborative development while supporting automated processes and clear project history.

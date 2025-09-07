@@ -1,0 +1,73 @@
+---
+description: Enforce React component patterns and best practices for Audio Journal PWA
+globs: src/components/**/*.tsx
+alwaysApply: true
+---
+
+# React Components - Audio Journal PWA
+
+## Component Structure
+- Use functional components with TypeScript interfaces for props
+- Follow the order: component declaration, styled components (if any), TypeScript types
+- Export components as default export at the bottom of the file
+
+## Props Interface
+```typescript
+interface ComponentNameProps {
+  // Required props first
+  requiredProp: string;
+
+  // Optional props with default values
+  optionalProp?: string;
+
+  // Event handlers
+  onAction?: () => void;
+
+  // Children
+  children?: React.ReactNode;
+}
+
+function ComponentName({
+  requiredProp,
+  optionalProp = 'default',
+  onAction,
+  children
+}: ComponentNameProps) {
+  // Component logic
+  return (
+    // JSX
+  );
+}
+
+export default ComponentName;
+```
+
+## Component Patterns
+- Use composition over inheritance
+- Implement proper loading states with skeleton screens
+- Handle error states gracefully with recovery actions
+- Ensure keyboard navigation and screen reader support
+
+## Performance Optimization
+- Use `React.memo` for expensive components when appropriate
+- Implement dynamic imports for code splitting
+- Optimize re-renders with proper dependency arrays
+- Use `useCallback` and `useMemo` for expensive operations
+
+## Accessibility (WCAG 2.1 AA)
+- Use semantic HTML elements
+- Implement proper ARIA labels and roles
+- Ensure keyboard navigation support
+- Maintain proper color contrast ratios
+- Support screen reader functionality
+
+## Naming Conventions
+- PascalCase for component names: `AudioUpload`, `TranscriptionView`
+- camelCase for component files: `audio-upload.tsx`
+- kebab-case for component directories: `audio-upload/`
+
+## Error Handling
+- Use error boundaries for component isolation
+- Implement proper error states with user-friendly messages
+- Provide recovery actions when possible
+- Log errors appropriately for debugging

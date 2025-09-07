@@ -1,0 +1,62 @@
+module.exports = {
+  root: true,
+  env: { browser: true, es2020: true },
+  extends: [
+    'eslint:recommended',
+    '@typescript-eslint/recommended',
+    'plugin:react/recommended',
+    'plugin:react-hooks/recommended',
+  ],
+  ignorePatterns: ['dist', '.eslintrc.cjs', 'node_modules', 'public'],
+  parser: '@typescript-eslint/parser',
+  plugins: ['react-refresh', '@typescript-eslint'],
+  rules: {
+    'react-refresh/only-export-components': [
+      'warn',
+      { allowConstantExport: true },
+    ],
+    'react/react-in-jsx-scope': 'off',
+    '@typescript-eslint/no-unused-vars': [
+      'error',
+      {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        ignoreRestSiblings: true,
+      },
+    ],
+    '@typescript-eslint/no-explicit-any': 'warn',
+    '@typescript-eslint/explicit-function-return-type': 'off',
+    '@typescript-eslint/explicit-module-boundary-types': 'off',
+    '@typescript-eslint/no-non-null-assertion': 'warn',
+    'react/prop-types': 'off',
+    'react/display-name': 'off',
+    'prefer-const': 'error',
+    'no-var': 'error',
+    'object-shorthand': 'error',
+    'prefer-arrow-callback': 'error',
+    'prefer-template': 'error',
+    'template-curly-spacing': 'error',
+    'arrow-spacing': 'error',
+    'comma-dangle': ['error', 'always-multiline'],
+    'quotes': ['error', 'single', { avoidEscape: true }],
+    'semi': ['error', 'always'],
+    'indent': ['error', 2, { SwitchCase: 1 }],
+    'max-len': [
+      'error',
+      {
+        code: 80,
+        ignoreUrls: true,
+        ignoreStrings: true,
+        ignoreTemplateLiterals: true,
+        ignoreComments: true,
+      },
+    ],
+    'no-console': ['warn', { allow: ['warn', 'error'] }],
+    'no-debugger': 'error',
+  },
+  settings: {
+    react: {
+      version: 'detect',
+    },
+  },
+}

@@ -1,0 +1,601 @@
+---
+description: Define Zustand store patterns and state management for Audio Journal PWA
+globs: src/stores/**/*.ts
+alwaysApply: true
+---
+
+# State Management - Zustand Stores
+
+## Store Structure
+
+### Audio Sessions Store
+```typescript
+interface AudioSessionsState {
+  // State
+  sessions: AudioSession[];
+  currentSession: AudioSession | null;
+  isLoading: boolean;
+  error: string | null;
+
+  // Actions
+  addSession: (session: Omit<AudioSession, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  updateSession: (id: string, updates: Partial<AudioSession>) => void;
+  deleteSession: (id: string) => void;
+  setCurrentSession: (session: AudioSession | null) => void;
+  setLoading: (loading: boolean) => void;
+  setError: (error: string | null) => void;
+
+  // Computed properties
+  getSessionById: (id: string) => AudioSession | undefined;
+  getSessionsByStatus: (status: ProcessingStatus) => AudioSession[];
+  getFavoriteSessions: () => AudioSession[];
+  getRecentSessions: (limit?: number) => AudioSession[];
+}
+
+export const useAudioSessionsStore = create<AudioSessionsState>((set, get) => ({
+  // Initial state
+  sessions: [],
+  currentSession: null,
+  isLoading: false,
+  error: null,
+
+  // Actions
+  addSession: (sessionData) => {
+    const newSession: AudioSession = {
+      ...sessionData,
+      id: generateId(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    set((state) => ({
+      sessions: [...state.sessions, newSession],
+      currentSession: newSession,
+    }));
+  },
+
+  updateSession: (id, updates) => {
+    set((state) => ({
+      sessions: state.sessions.map(session =>
+        session.id === id
+          ? { ...session, ...updates, updatedAt: new Date() }
+          : session
+      ),
+      currentSession: state.currentSession?.id === id
+        ? { ...state.currentSession, ...updates, updatedAt: new Date() }
+        : state.currentSession,
+    }));
+  },
+
+  deleteSession: (id) => {
+    set((state) => ({
+      sessions: state.sessions.filter(session => session.id !== id),
+      currentSession: state.currentSession?.id === id ? null : state.currentSession,
+    }));
+  },
+
+  setCurrentSession: (session) => {
+    set({ currentSession: session });
+  },
+
+  setLoading: (loading) => {
+    set({ isLoading: loading });
+  },
+
+  setError: (error) => {
+    set({ error, isLoading: false });
+  },
+
+  // Computed properties
+  getSessionById: (id) => {
+    return get().sessions.find(session => session.id === id);
+  },
+
+  getSessionsByStatus: (status) => {
+    return get().sessions.filter(session => session.status === status);
+  },
+
+  getFavoriteSessions: () => {
+    return get().sessions.filter(session => session.isFavorite);
+  },
+
+  getRecentSessions: (limit = 10) => {
+    return get().sessions
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit);
+  },
+}));
+```
+
+### Tasks Store
+```typescript
+interface TasksState {
+  // State
+  tasks: Task[];
+  isLoading: boolean;
+  error: string | null;
+
+  // Actions
+  addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  updateTask: (id: string, updates: Partial<Task>) => void;
+  deleteTask: (id: string) => void;
+  toggleTask: (id: string) => void;
+  setLoading: (loading: boolean) => void;
+  setError: (error: string | null) => void;
+
+  // Computed properties
+  getTaskById: (id: string) => Task | undefined;
+  getTasksBySession: (sessionId: string) => Task[];
+  getCompletedTasks: () => Task[];
+  getPendingTasks: () => Task[];
+  getOverdueTasks: () => Task[];
+  getTasksByPriority: (priority: TaskPriority) => Task[];
+}
+
+export const useTasksStore = create<TasksState>((set, get) => ({
+  // Initial state
+  tasks: [],
+  isLoading: false,
+  error: null,
+
+  // Actions
+  addTask: (taskData) => {
+    const newTask: Task = {
+      ...taskData,
+      id: generateId(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      completed: false,
+    };
+
+    set((state) => ({
+      tasks: [...state.tasks, newTask],
+    }));
+  },
+
+  updateTask: (id, updates) => {
+    set((state) => ({
+      tasks: state.tasks.map(task =>
+        task.id === id
+          ? { ...task, ...updates, updatedAt: new Date() }
+          : task
+      ),
+    }));
+  },
+
+  deleteTask: (id) => {
+    set((state) => ({
+      tasks: state.tasks.filter(task => task.id !== id),
+    }));
+  },
+
+  toggleTask: (id) => {
+    set((state) => ({
+      tasks: state.tasks.map(task =>
+        task.id === id
+          ? {
+              ...task,
+              completed: !task.completed,
+              completedAt: !task.completed ? new Date() : undefined,
+              updatedAt: new Date()
+            }
+          : task
+      ),
+    }));
+  },
+
+  setLoading: (loading) => {
+    set({ isLoading: loading });
+  },
+
+  setError: (error) => {
+    set({ error, isLoading: false });
+  },
+
+  // Computed properties
+  getTaskById: (id) => {
+    return get().tasks.find(task => task.id === id);
+  },
+
+  getTasksBySession: (sessionId) => {
+    return get().tasks.filter(task => task.sessionId === sessionId);
+  },
+
+  getCompletedTasks: () => {
+    return get().tasks.filter(task => task.completed);
+  },
+
+  getPendingTasks: () => {
+    return get().tasks.filter(task => !task.completed);
+  },
+
+  getOverdueTasks: () => {
+    const now = new Date();
+    return get().tasks.filter(task =>
+      !task.completed && task.dueDate && task.dueDate < now
+    );
+  },
+
+  getTasksByPriority: (priority) => {
+    return get().tasks.filter(task => task.priority === priority);
+  },
+}));
+```
+
+### UI State Store
+```typescript
+interface UIState {
+  // Theme
+  theme: 'light' | 'dark' | 'auto';
+
+  // Layout
+  sidebarOpen: boolean;
+  activeView: 'dashboard' | 'upload' | 'history' | 'settings';
+
+  // Modals and overlays
+  activeModal: string | null;
+  modalProps: Record<string, any>;
+
+  // Notifications
+  notifications: Notification[];
+
+  // Loading states
+  globalLoading: boolean;
+  loadingStates: Record<string, boolean>;
+
+  // Actions
+  setTheme: (theme: 'light' | 'dark' | 'auto') => void;
+  toggleSidebar: () => void;
+  setActiveView: (view: 'dashboard' | 'upload' | 'history' | 'settings') => void;
+  openModal: (modalId: string, props?: Record<string, any>) => void;
+  closeModal: () => void;
+  addNotification: (notification: Omit<Notification, 'id'>) => void;
+  removeNotification: (id: string) => void;
+  setGlobalLoading: (loading: boolean) => void;
+  setLoadingState: (key: string, loading: boolean) => void;
+}
+
+interface Notification {
+  id: string;
+  type: 'success' | 'error' | 'warning' | 'info';
+  title: string;
+  message?: string;
+  duration?: number;
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
+}
+
+export const useUIStore = create<UIState>((set, get) => ({
+  // Initial state
+  theme: 'auto',
+  sidebarOpen: false,
+  activeView: 'dashboard',
+  activeModal: null,
+  modalProps: {},
+  notifications: [],
+  globalLoading: false,
+  loadingStates: {},
+
+  // Actions
+  setTheme: (theme) => {
+    set({ theme });
+    // Apply theme to document
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else if (theme === 'light') {
+      root.classList.remove('dark');
+    } else {
+      // Auto theme based on system preference
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (prefersDark) {
+        root.classList.add('dark');
+      } else {
+        root.classList.remove('dark');
+      }
+    }
+  },
+
+  toggleSidebar: () => {
+    set((state) => ({ sidebarOpen: !state.sidebarOpen }));
+  },
+
+  setActiveView: (view) => {
+    set({ activeView: view });
+  },
+
+  openModal: (modalId, props = {}) => {
+    set({
+      activeModal: modalId,
+      modalProps: props
+    });
+  },
+
+  closeModal: () => {
+    set({
+      activeModal: null,
+      modalProps: {}
+    });
+  },
+
+  addNotification: (notification) => {
+    const newNotification: Notification = {
+      ...notification,
+      id: generateId(),
+      duration: notification.duration ?? 5000,
+    };
+
+    set((state) => ({
+      notifications: [...state.notifications, newNotification],
+    }));
+
+    // Auto-remove notification after duration
+    if (newNotification.duration > 0) {
+      setTimeout(() => {
+        get().removeNotification(newNotification.id);
+      }, newNotification.duration);
+    }
+  },
+
+  removeNotification: (id) => {
+    set((state) => ({
+      notifications: state.notifications.filter(n => n.id !== id),
+    }));
+  },
+
+  setGlobalLoading: (loading) => {
+    set({ globalLoading: loading });
+  },
+
+  setLoadingState: (key, loading) => {
+    set((state) => ({
+      loadingStates: {
+        ...state.loadingStates,
+        [key]: loading,
+      },
+    }));
+  },
+}));
+```
+
+### User Settings Store
+```typescript
+interface UserSettingsState {
+  // Audio processing settings
+  defaultLanguage: string;
+  transcriptionProvider: 'google';
+  summarizationProvider: 'google';
+
+  // Privacy settings
+  dataRetentionDays: number;
+  autoDeleteOldSessions: boolean;
+  cloudBackupEnabled: boolean;
+
+  // UI settings
+  theme: 'light' | 'dark' | 'auto';
+  language: string;
+  timezone: string;
+
+  // Notification settings
+  emailNotifications: boolean;
+  pushNotifications: boolean;
+  processingCompleteNotification: boolean;
+  taskReminderNotification: boolean;
+
+  // Performance settings
+  maxConcurrentUploads: number;
+  lowQualityMode: boolean;
+  offlineMode: boolean;
+
+  // Actions
+  updateSettings: (settings: Partial<UserSettings>) => void;
+  resetSettings: () => void;
+  exportSettings: () => string;
+  importSettings: (settingsJson: string) => void;
+}
+
+const DEFAULT_SETTINGS: Omit<UserSettingsState, 'updateSettings' | 'resetSettings' | 'exportSettings' | 'importSettings'> = {
+  defaultLanguage: 'en-US',
+  transcriptionProvider: 'google',
+  summarizationProvider: 'google',
+  dataRetentionDays: 90,
+  autoDeleteOldSessions: true,
+  cloudBackupEnabled: false,
+  theme: 'auto',
+  language: 'en',
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  emailNotifications: true,
+  pushNotifications: true,
+  processingCompleteNotification: true,
+  taskReminderNotification: true,
+  maxConcurrentUploads: 3,
+  lowQualityMode: false,
+  offlineMode: false,
+};
+
+export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
+  ...DEFAULT_SETTINGS,
+
+  updateSettings: (newSettings) => {
+    set((state) => ({
+      ...state,
+      ...newSettings,
+    }));
+
+    // Persist to localStorage
+    const updatedSettings = { ...get(), ...newSettings };
+    delete updatedSettings.updateSettings;
+    delete updatedSettings.resetSettings;
+    delete updatedSettings.exportSettings;
+    delete updatedSettings.importSettings;
+
+    localStorage.setItem('userSettings', JSON.stringify(updatedSettings));
+  },
+
+  resetSettings: () => {
+    set(DEFAULT_SETTINGS);
+    localStorage.removeItem('userSettings');
+  },
+
+  exportSettings: () => {
+    const settings = get();
+    const exportData = {
+      ...settings,
+      exportedAt: new Date().toISOString(),
+      version: '1.0',
+    };
+
+    delete exportData.updateSettings;
+    delete exportData.resetSettings;
+    delete exportData.exportSettings;
+    delete exportData.importSettings;
+
+    return JSON.stringify(exportData, null, 2);
+  },
+
+  importSettings: (settingsJson) => {
+    try {
+      const importedSettings = JSON.parse(settingsJson);
+
+      // Validate imported settings
+      if (!importedSettings || typeof importedSettings !== 'object') {
+        throw new Error('Invalid settings format');
+      }
+
+      // Remove metadata fields
+      delete importedSettings.exportedAt;
+      delete importedSettings.version;
+
+      // Update settings
+      get().updateSettings(importedSettings);
+    } catch (error) {
+      throw new Error(`Failed to import settings: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  },
+}));
+```
+
+## Store Best Practices
+
+### Store Organization
+- Group related state in dedicated stores
+- Keep stores focused on specific domains
+- Use descriptive store names with `use` prefix
+- Export stores as named exports for better tree-shaking
+
+### State Structure
+- Keep state flat and normalized when possible
+- Use computed properties for derived state
+- Avoid deeply nested objects
+- Use primitive types for simple state
+
+### Actions
+- Use descriptive action names
+- Keep actions pure and predictable
+- Handle async operations properly
+- Provide loading and error states
+
+### Selectors
+- Create computed selectors for complex state derivations
+- Memoize expensive calculations
+- Avoid inline selectors in components
+- Use selector hooks for better performance
+
+### Persistence
+- Persist important state to localStorage or IndexedDB
+- Handle migration between versions
+- Provide import/export functionality
+- Validate persisted data on load
+
+### Testing
+- Test stores in isolation
+- Mock external dependencies
+- Test async actions thoroughly
+- Verify state updates and selectors
+
+## Advanced Patterns
+
+### Store Composition
+```typescript
+// Combine multiple stores when needed
+const useCombinedStore = () => {
+  const sessions = useAudioSessionsStore();
+  const tasks = useTasksStore();
+  const ui = useUIStore();
+
+  return {
+    // Combined state
+    sessions: sessions.sessions,
+    tasks: tasks.tasks,
+    ui: {
+      theme: ui.theme,
+      sidebarOpen: ui.sidebarOpen,
+    },
+
+    // Combined actions
+    addSessionWithTasks: (sessionData: any, taskData: any[]) => {
+      const session = sessions.addSession(sessionData);
+      taskData.forEach(task => tasks.addTask({ ...task, sessionId: session.id }));
+    },
+  };
+};
+```
+
+### Middleware
+```typescript
+// Logging middleware
+const logger = (config: any) => (set: any, get: any, api: any) =>
+  config(
+    (...args: any[]) => {
+      console.log('State before:', get());
+      set(...args);
+      console.log('State after:', get());
+    },
+    get,
+    api
+  );
+
+// Usage
+export const useStore = create(logger(storeConfig));
+```
+
+### Async Actions
+```typescript
+// Handle async operations
+const asyncActions = (set: any, get: any) => ({
+  loadSessions: async () => {
+    set({ isLoading: true, error: null });
+
+    try {
+      const sessions = await api.loadSessions();
+      set({ sessions, isLoading: false });
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to load sessions',
+        isLoading: false
+      });
+    }
+  },
+
+  saveSession: async (session: AudioSession) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      await api.saveSession(session);
+      set((state: any) => ({
+        sessions: [...state.sessions, session],
+        isLoading: false
+      }));
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to save session',
+        isLoading: false
+      });
+    }
+  },
+});
+```
+
+This state management approach ensures predictable, maintainable, and performant state handling throughout the Audio Journal PWA.

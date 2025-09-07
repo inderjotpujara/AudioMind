@@ -1,0 +1,599 @@
+---
+description: Define patterns for audio processing and API integrations
+globs: src/lib/audio/**/*.ts
+alwaysApply: true
+---
+
+# Audio Processing - Audio Journal PWA
+
+## File Handling
+
+### Audio File Validation
+```typescript
+const AUDIO_TYPES = [
+  'audio/mpeg',     // .mp3
+  'audio/wav',      // .wav
+  'audio/webm',     // .webm
+  'audio/ogg',      // .ogg
+  'audio/mp4',      // .mp4, .m4a
+  'audio/aac',      // .aac
+  'audio/flac',     // .flac
+] as const;
+
+const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+
+function validateAudioFile(file: File): ValidationResult {
+  // Check file type
+  if (!AUDIO_TYPES.includes(file.type as any)) {
+    return {
+      valid: false,
+      error: 'Unsupported file type. Please use MP3, WAV, WebM, MP4, AAC, or FLAC files.'
+    };
+  }
+
+  // Check file size
+  if (file.size > MAX_FILE_SIZE) {
+    return {
+      valid: false,
+      error: `File size too large. Maximum size is ${formatFileSize(MAX_FILE_SIZE)}.`
+    };
+  }
+
+  // Check file extension as fallback
+  const extension = getFileExtension(file.name).toLowerCase();
+  const validExtensions = ['mp3', 'wav', 'webm', 'ogg', 'mp4', 'm4a', 'aac', 'flac'];
+  if (!validExtensions.includes(extension)) {
+    return {
+      valid: false,
+      error: 'Invalid file extension.'
+    };
+  }
+
+  return { valid: true };
+}
+```
+
+### Audio Metadata Extraction
+```typescript
+interface AudioMetadata {
+  duration: number;
+  sampleRate: number;
+  channels: number;
+  bitrate: number;
+  format: string;
+}
+
+async function extractAudioMetadata(file: File): Promise<AudioMetadata> {
+  return new Promise((resolve, reject) => {
+    const audio = new Audio();
+    const url = URL.createObjectURL(file);
+
+    audio.addEventListener('loadedmetadata', () => {
+      URL.revokeObjectURL(url);
+      resolve({
+        duration: audio.duration,
+        sampleRate: 44100, // Default, would need more advanced parsing
+        channels: 2,       // Default, would need more advanced parsing
+        bitrate: 128,      // Default, would need more advanced parsing
+        format: file.type
+      });
+    });
+
+    audio.addEventListener('error', () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to load audio metadata'));
+    });
+
+    audio.src = url;
+  });
+}
+```
+
+## Google Speech-to-Text Integration
+
+### Configuration Setup
+```typescript
+interface SpeechConfig {
+  encoding: 'WEBM_OPUS' | 'MP3' | 'WAV' | 'M4A';
+  sampleRateHertz: 16000 | 44100 | 48000;
+  languageCode: string;
+  enableSpeakerDiarization: boolean;
+  enableAutomaticPunctuation: boolean;
+  enableWordTimeOffsets: boolean;
+  model: 'latest_long' | 'latest_short';
+  useEnhanced: boolean;
+}
+
+const DEFAULT_SPEECH_CONFIG: SpeechConfig = {
+  encoding: 'WEBM_OPUS',
+  sampleRateHertz: 16000,
+  languageCode: 'en-US',
+  enableSpeakerDiarization: true,
+  enableAutomaticPunctuation: true,
+  enableWordTimeOffsets: true,
+  model: 'latest_long',
+  useEnhanced: false
+};
+```
+
+### API Request/Response Handling
+```typescript
+interface SpeechRequest {
+  config: SpeechConfig;
+  audio: {
+    content: string; // Base64 encoded
+    uri?: string;    // GCS URI for large files
+  };
+}
+
+interface SpeechResponse {
+  results: Array<{
+    alternatives: Array<{
+      transcript: string;
+      confidence: number;
+      words: Array<{
+        word: string;
+        startTime: string;
+        endTime: string;
+        speakerTag?: number;
+      }>;
+    }>;
+  }>;
+}
+
+class SpeechToTextService {
+  private readonly apiKey: string;
+  private readonly baseUrl = 'https://speech.googleapis.com/v1';
+
+  constructor(apiKey: string) {
+    this.apiKey = apiKey;
+  }
+
+  async transcribe(audioBlob: Blob, config: SpeechConfig): Promise<TranscriptionResult> {
+    const base64Audio = await this.blobToBase64(audioBlob);
+
+    const request: SpeechRequest = {
+      config,
+      audio: { content: base64Audio }
+    };
+
+    const response = await fetch(`${this.baseUrl}/speech:recognize?key=${this.apiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request)
+    });
+
+    if (!response.ok) {
+      throw new Error(`Speech API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data: SpeechResponse = await response.json();
+    return this.processResponse(data, config);
+  }
+
+  private async blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  private processResponse(data: SpeechResponse, config: SpeechConfig): TranscriptionResult {
+    const transcript = data.results
+      .map(result => result.alternatives[0]?.transcript || '')
+      .join(' ');
+
+    const confidence = data.results.reduce((acc, result) =>
+      acc + (result.alternatives[0]?.confidence || 0), 0
+    ) / data.results.length;
+
+    return {
+      provider: 'google',
+      model: config.model,
+      language: config.languageCode,
+      confidence,
+      transcript,
+      segments: this.extractSegments(data),
+      speakers: config.enableSpeakerDiarization ? this.extractSpeakers(data) : undefined
+    };
+  }
+
+  private extractSegments(data: SpeechResponse): TranscriptionSegment[] {
+    // Implementation for segment extraction
+    return [];
+  }
+
+  private extractSpeakers(data: SpeechResponse): SpeakerInfo[] {
+    // Implementation for speaker extraction
+    return [];
+  }
+}
+```
+
+## Google Cloud Natural Language API Integration
+
+### Summarization Service
+```typescript
+interface GoogleNLRequest {
+  document: {
+    type: 'PLAIN_TEXT';
+    content: string;
+  };
+  features: {
+    extractSyntax?: boolean;
+    extractEntities?: boolean;
+    extractDocumentSentiment?: boolean;
+    extractEntitySentiment?: boolean;
+    classifyText?: boolean;
+    summarizeText?: boolean;
+  };
+  encodingType?: 'UTF8' | 'UTF16' | 'UTF32';
+}
+
+const SUMMARIZATION_FEATURES = {
+  extractSyntax: true,
+  extractEntities: true,
+  extractDocumentSentiment: true,
+  classifyText: true,
+  summarizeText: true,
+};
+
+class GoogleNaturalLanguageService {
+  private readonly apiKey: string;
+  private readonly baseUrl = 'https://language.googleapis.com/v1';
+
+  constructor(apiKey: string) {
+    this.apiKey = apiKey;
+  }
+
+  async analyzeText(text: string): Promise<GoogleNLResponse> {
+    const request: GoogleNLRequest = {
+      document: {
+        type: 'PLAIN_TEXT',
+        content: text,
+      },
+      features: SUMMARIZATION_FEATURES,
+    };
+
+    const response = await fetch(`${this.baseUrl}/documents:analyzeEntities?key=${this.apiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Google NL API error: ${response.status} ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  async summarizeTranscript(transcript: string, config: GoogleNLConfig): Promise<SummaryResult> {
+    // Use Google Cloud Natural Language for text analysis and summarization
+    const analysis = await this.analyzeText(transcript);
+
+    // Generate summary using extracted entities and sentiment
+    const summary = this.generateSummaryFromAnalysis(analysis, transcript);
+
+    return {
+      summary,
+      keyPoints: this.extractKeyPoints(analysis),
+      topics: this.extractTopics(analysis),
+      provider: 'google',
+      model: config.model || 'v1',
+      generatedAt: new Date(),
+      confidence: analysis.documentSentiment?.magnitude ? 0.8 : 0.6,
+      wordCount: summary.split(' ').length,
+      compressionRatio: transcript.length / summary.length,
+    };
+  }
+
+  private generateSummaryFromAnalysis(analysis: GoogleNLResponse, originalText: string): string {
+    // Use the most salient entities and sentiment to create a summary
+    const entities = analysis.entities?.slice(0, 5) || [];
+    const sentiment = analysis.documentSentiment;
+
+    let summary = '';
+
+    if (sentiment && sentiment.score > 0.1) {
+      summary += `The discussion was generally positive. `;
+    } else if (sentiment && sentiment.score < -0.1) {
+      summary += `The discussion addressed some challenges. `;
+    }
+
+    if (entities.length > 0) {
+      const mainTopics = entities.map(e => e.name).join(', ');
+      summary += `Key topics discussed include: ${mainTopics}.`;
+    }
+
+    // If analysis doesn't provide enough, create a basic extractive summary
+    if (summary.length < 50) {
+      const sentences = originalText.split(/[.!?]+/).filter(s => s.trim().length > 20);
+      summary = sentences.slice(0, 3).join('. ').trim() + '.';
+    }
+
+    return summary;
+  }
+
+  private extractKeyPoints(analysis: GoogleNLResponse): string[] {
+    const entities = analysis.entities || [];
+    return entities
+      .filter(entity => entity.salience && entity.salience > 0.1)
+      .sort((a, b) => (b.salience || 0) - (a.salience || 0))
+      .slice(0, 5)
+      .map(entity => entity.name);
+  }
+
+  private extractTopics(analysis: GoogleNLResponse): string[] {
+    const categories = analysis.categories || [];
+    return categories
+      .filter(cat => cat.confidence > 0.5)
+      .map(cat => cat.name.split('/').pop() || cat.name)
+      .slice(0, 5);
+  }
+}
+```
+
+## Error Handling and Retry Logic
+
+### Circuit Breaker Pattern
+```typescript
+class CircuitBreaker {
+  private failures = 0;
+  private lastFailureTime = 0;
+  private state: 'closed' | 'open' | 'half-open' = 'closed';
+
+  constructor(
+    private readonly failureThreshold: number = 5,
+    private readonly timeout: number = 60000
+  ) {}
+
+  async execute<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.state === 'open') {
+      if (Date.now() - this.lastFailureTime > this.timeout) {
+        this.state = 'half-open';
+      } else {
+        throw new Error('Circuit breaker is open');
+      }
+    }
+
+    try {
+      const result = await operation();
+      this.onSuccess();
+      return result;
+    } catch (error) {
+      this.onFailure();
+      throw error;
+    }
+  }
+
+  private onSuccess() {
+    this.failures = 0;
+    this.state = 'closed';
+  }
+
+  private onFailure() {
+    this.failures++;
+    this.lastFailureTime = Date.now();
+
+    if (this.failures >= this.failureThreshold) {
+      this.state = 'open';
+    }
+  }
+}
+```
+
+### Rate Limiting
+```typescript
+class RateLimiter {
+  private requests: number[] = [];
+
+  constructor(
+    private readonly windowMs: number,
+    private readonly maxRequests: number
+  ) {}
+
+  async waitForSlot(): Promise<void> {
+    const now = Date.now();
+
+    // Remove old requests outside the window
+    this.requests = this.requests.filter(
+      timestamp => now - timestamp < this.windowMs
+    );
+
+    if (this.requests.length >= this.maxRequests) {
+      // Calculate wait time until oldest request expires
+      const oldestRequest = Math.min(...this.requests);
+      const waitTime = this.windowMs - (now - oldestRequest);
+
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      return this.waitForSlot(); // Recursively check again
+    }
+
+    this.requests.push(now);
+  }
+}
+
+// Usage
+const speechRateLimiter = new RateLimiter(60000, 10); // 10 requests per minute
+const openaiRateLimiter = new RateLimiter(60000, 50); // 50 requests per minute
+```
+
+## Audio Processing Pipeline
+
+### Processing Orchestrator
+```typescript
+interface ProcessingOptions {
+  language?: string;
+  enableSpeakerDiarization: boolean;
+  enablePunctuation: boolean;
+  enableWordTimestamps: boolean;
+  generateSummary: boolean;
+  extractTasks: boolean;
+  summaryLength: 'short' | 'medium' | 'long';
+}
+
+class AudioProcessingPipeline {
+  constructor(
+    private readonly speechService: SpeechToTextService,
+    private readonly nlService: GoogleNaturalLanguageService,
+    private readonly circuitBreaker: CircuitBreaker
+  ) {}
+
+  async processAudio(
+    audioBlob: Blob,
+    options: ProcessingOptions,
+    onProgress?: (progress: number, stage: string) => void
+  ): Promise<ProcessingResult> {
+    try {
+      // Step 1: Validate audio file
+      onProgress?.(10, 'Validating audio file');
+      const validation = validateAudioFile(new File([audioBlob], 'audio'));
+      if (!validation.valid) {
+        throw new Error(validation.error);
+      }
+
+      // Step 2: Extract metadata
+      onProgress?.(20, 'Extracting metadata');
+      const metadata = await extractAudioMetadata(new File([audioBlob], 'audio'));
+
+      // Step 3: Configure speech recognition
+      const speechConfig: SpeechConfig = {
+        encoding: this.detectEncoding(audioBlob.type),
+        sampleRateHertz: 16000,
+        languageCode: options.language || 'en-US',
+        enableSpeakerDiarization: options.enableSpeakerDiarization,
+        enableAutomaticPunctuation: options.enablePunctuation,
+        enableWordTimeOffsets: options.enableWordTimestamps,
+        model: 'latest_long',
+        useEnhanced: false
+      };
+
+      // Step 4: Transcribe audio
+      onProgress?.(40, 'Transcribing audio');
+      const transcription = await this.circuitBreaker.execute(() =>
+        this.speechService.transcribe(audioBlob, speechConfig)
+      );
+
+      // Step 5: Generate summary (if requested)
+      let summary: SummaryResult | undefined;
+      if (options.generateSummary) {
+        onProgress?.(70, 'Generating summary');
+        const nlConfig: GoogleNLConfig = {
+          model: 'v1',
+          features: ['entities', 'sentiment', 'categories']
+        };
+
+        summary = await this.circuitBreaker.execute(() =>
+          this.nlService.summarizeTranscript(transcription.transcript, nlConfig)
+        );
+      }
+
+      // Step 6: Extract tasks (if requested)
+      let tasks: Task[] = [];
+      if (options.extractTasks) {
+        onProgress?.(90, 'Extracting tasks');
+        tasks = await this.extractTasksFromTranscript(transcription.transcript);
+      }
+
+      onProgress?.(100, 'Processing complete');
+
+      return {
+        success: true,
+        transcription,
+        summary,
+        tasks,
+        metadata,
+        processingTime: Date.now() - Date.now() // Calculate actual time
+      };
+
+    } catch (error) {
+      console.error('Audio processing failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        transcription: undefined,
+        summary: undefined,
+        tasks: [],
+        metadata: undefined,
+        processingTime: 0
+      };
+    }
+  }
+
+  private detectEncoding(mimeType: string): SpeechConfig['encoding'] {
+    switch (mimeType) {
+      case 'audio/webm': return 'WEBM_OPUS';
+      case 'audio/mpeg':
+      case 'audio/mp3': return 'MP3';
+      case 'audio/wav': return 'WAV';
+      case 'audio/mp4':
+      case 'audio/aac': return 'M4A';
+      default: return 'WEBM_OPUS';
+    }
+  }
+
+  private async extractTasksFromTranscript(transcript: string): Promise<Task[]> {
+    // Implementation for task extraction using Google Cloud Natural Language
+    // Analyze the transcript for action-oriented language patterns
+    const analysis = await this.nlService.analyzeText(transcript);
+
+    // Extract potential tasks based on entities and context
+    const tasks: Task[] = [];
+    const entities = analysis.entities || [];
+
+    // Look for action verbs and associated entities
+    const actionPatterns = /\b(?:need to|should|must|will|going to|plan to|schedule|meeting|deadline|due|remind)\b/gi;
+    const sentences = transcript.split(/[.!?]+/);
+
+    sentences.forEach((sentence, index) => {
+      if (actionPatterns.test(sentence)) {
+        // Create a task from sentences containing action language
+        const taskTitle = sentence.trim().substring(0, 100);
+        if (taskTitle.length > 10) { // Avoid very short fragments
+          tasks.push({
+            id: generateId(),
+            title: taskTitle,
+            description: `From transcript segment ${index + 1}`,
+            priority: 'medium',
+            completed: false,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          } as Task);
+        }
+      }
+    });
+
+    return tasks.slice(0, 10); // Limit to 10 tasks maximum
+  }
+}
+```
+
+## Best Practices
+
+### Performance Optimization
+- Use streaming for large audio files
+- Implement proper chunking for long recordings
+- Cache API responses when appropriate
+- Handle network interruptions gracefully
+
+### Error Recovery
+- Implement exponential backoff for retries
+- Provide fallback options for failed API calls
+- Allow manual correction of transcription errors
+- Save progress to prevent data loss
+
+### Security Considerations
+- Never expose API keys in client-side code
+- Use environment variables for sensitive configuration
+- Implement proper input validation and sanitization
+- Handle audio data securely without unnecessary storage

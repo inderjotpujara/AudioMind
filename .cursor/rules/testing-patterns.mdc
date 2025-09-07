@@ -1,0 +1,846 @@
+---
+description: Define testing patterns and best practices for Audio Journal PWA
+globs: src/**/*.test.ts
+alwaysApply: true
+---
+
+# Testing Patterns - Audio Journal PWA
+
+## Overview
+
+Audio Journal PWA requires comprehensive testing strategies due to its complex audio processing, API integrations, and state management. This document defines testing patterns and best practices.
+
+## Testing Strategy
+
+### Testing Pyramid
+```
+End-to-End Tests (Playwright)
+    ↓
+Integration Tests (React Testing Library + Vitest)
+    ↓
+Unit Tests (Vitest)
+    ↓
+Static Analysis (TypeScript + ESLint)
+```
+
+## Unit Testing Patterns
+
+### Component Testing
+```typescript
+import { render, screen, fireEvent } from '@testing-library/react'
+import { expect, describe, it, vi } from 'vitest'
+import { AudioUpload } from './AudioUpload'
+
+describe('AudioUpload', () => {
+  const mockOnFileSelect = vi.fn()
+  const mockOnError = vi.fn()
+
+  const defaultProps = {
+    accept: 'audio/*',
+    multiple: false,
+    maxSize: 500 * 1024 * 1024, // 500MB
+    onFileSelect: mockOnFileSelect,
+    onError: mockOnError,
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('renders upload zone correctly', () => {
+    render(<AudioUpload {...defaultProps} />)
+
+    expect(screen.getByText(/drop audio files/i)).toBeInTheDocument()
+    expect(screen.getByText(/or click to browse/i)).toBeInTheDocument()
+  })
+
+  it('handles file selection', async () => {
+    render(<AudioUpload {...defaultProps} />)
+
+    const file = new File(['audio content'], 'test.mp3', { type: 'audio/mpeg' })
+    const input = screen.getByTestId('file-input')
+
+    fireEvent.change(input, { target: { files: [file] } })
+
+    expect(mockOnFileSelect).toHaveBeenCalledWith([file])
+  })
+
+  it('validates file size', async () => {
+    const largeFile = new File(['x'.repeat(600 * 1024 * 1024)], 'large.mp3', {
+      type: 'audio/mpeg'
+    })
+
+    render(<AudioUpload {...defaultProps} />)
+
+    const input = screen.getByTestId('file-input')
+    fireEvent.change(input, { target: { files: [largeFile] } })
+
+    expect(mockOnError).toHaveBeenCalledWith('File size too large')
+  })
+
+  it('validates file type', async () => {
+    const invalidFile = new File(['content'], 'test.txt', { type: 'text/plain' })
+
+    render(<AudioUpload {...defaultProps} />)
+
+    const input = screen.getByTestId('file-input')
+    fireEvent.change(input, { target: { files: [invalidFile] } })
+
+    expect(mockOnError).toHaveBeenCalledWith('Unsupported file type')
+  })
+})
+```
+
+### Hook Testing
+```typescript
+import { renderHook, act } from '@testing-library/react'
+import { expect, describe, it, vi } from 'vitest'
+import { useAudioProcessing } from './useAudioProcessing'
+
+describe('useAudioProcessing', () => {
+  const mockApiService = {
+    transcribe: vi.fn(),
+    summarize: vi.fn(),
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('handles successful processing', async () => {
+    const mockTranscript = {
+      transcript: 'Hello world',
+      confidence: 0.95,
+    }
+
+    mockApiService.transcribe.mockResolvedValue(mockTranscript)
+
+    const { result } = renderHook(() =>
+      useAudioProcessing(mockApiService)
+    )
+
+    const audioBlob = new Blob(['audio data'], { type: 'audio/webm' })
+
+    act(() => {
+      result.current.processAudio(audioBlob, {
+        generateSummary: false,
+        extractTasks: false,
+      })
+    })
+
+    expect(result.current.isProcessing).toBe(true)
+
+    // Wait for processing to complete
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 100))
+    })
+
+    expect(result.current.transcription).toEqual(mockTranscript)
+    expect(result.current.isProcessing).toBe(false)
+  })
+
+  it('handles processing errors', async () => {
+    const mockError = new Error('API quota exceeded')
+    mockApiService.transcribe.mockRejectedValue(mockError)
+
+    const { result } = renderHook(() =>
+      useAudioProcessing(mockApiService)
+    )
+
+    const audioBlob = new Blob(['audio data'], { type: 'audio/webm' })
+
+    act(() => {
+      result.current.processAudio(audioBlob, {
+        generateSummary: false,
+        extractTasks: false,
+      })
+    })
+
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 100))
+    })
+
+    expect(result.current.error).toEqual(mockError)
+    expect(result.current.isProcessing).toBe(false)
+  })
+})
+```
+
+### Store Testing
+```typescript
+import { expect, describe, it, beforeEach } from 'vitest'
+import { createStore } from 'zustand/vanilla'
+import { audioSessionsStore } from './audioSessionsStore'
+
+describe('Audio Sessions Store', () => {
+  let store: any
+
+  beforeEach(() => {
+    store = createStore(audioSessionsStore)
+  })
+
+  it('initializes with empty sessions', () => {
+    expect(store.getState().sessions).toEqual([])
+    expect(store.getState().currentSession).toBeNull()
+    expect(store.getState().isLoading).toBe(false)
+  })
+
+  it('adds new session correctly', () => {
+    const sessionData = {
+      fileName: 'test.mp3',
+      fileSize: 1024,
+      mimeType: 'audio/mpeg',
+      duration: 60,
+      status: 'completed' as const,
+    }
+
+    store.getState().addSession(sessionData)
+
+    const state = store.getState()
+    expect(state.sessions).toHaveLength(1)
+    expect(state.sessions[0]).toMatchObject({
+      ...sessionData,
+      id: expect.any(String),
+      createdAt: expect.any(Date),
+      updatedAt: expect.any(Date),
+    })
+    expect(state.currentSession).toEqual(state.sessions[0])
+  })
+
+  it('updates session correctly', () => {
+    // Add session first
+    const sessionData = {
+      fileName: 'test.mp3',
+      fileSize: 1024,
+      mimeType: 'audio/mpeg',
+      duration: 60,
+      status: 'completed' as const,
+    }
+    store.getState().addSession(sessionData)
+
+    const sessionId = store.getState().sessions[0].id
+
+    // Update session
+    store.getState().updateSession(sessionId, {
+      status: 'failed' as const,
+    })
+
+    const updatedSession = store.getState().sessions[0]
+    expect(updatedSession.status).toBe('failed')
+    expect(updatedSession.updatedAt.getTime()).toBeGreaterThan(
+      updatedSession.createdAt.getTime()
+    )
+  })
+
+  it('filters sessions by status', () => {
+    const sessions = [
+      { fileName: 'test1.mp3', status: 'completed' as const, fileSize: 1024, mimeType: 'audio/mpeg', duration: 60 },
+      { fileName: 'test2.mp3', status: 'failed' as const, fileSize: 1024, mimeType: 'audio/mpeg', duration: 60 },
+      { fileName: 'test3.mp3', status: 'completed' as const, fileSize: 1024, mimeType: 'audio/mpeg', duration: 60 },
+    ]
+
+    sessions.forEach(session => store.getState().addSession(session))
+
+    const completedSessions = store.getState().getSessionsByStatus('completed')
+    const failedSessions = store.getState().getSessionsByStatus('failed')
+
+    expect(completedSessions).toHaveLength(2)
+    expect(failedSessions).toHaveLength(1)
+  })
+})
+```
+
+## Integration Testing
+
+### API Integration Testing
+```typescript
+import { expect, describe, it, vi, beforeEach } from 'vitest'
+import { GoogleSpeechToTextService } from './GoogleSpeechToTextService'
+
+// Mock fetch globally
+global.fetch = vi.fn()
+
+describe('GoogleSpeechToTextService Integration', () => {
+  let service: GoogleSpeechToTextService
+
+  beforeEach(() => {
+    service = new GoogleSpeechToTextService('test-api-key')
+    vi.clearAllMocks()
+  })
+
+  it('handles successful transcription', async () => {
+    const mockResponse = {
+      results: [{
+        alternatives: [{
+          transcript: 'Hello world',
+          confidence: 0.95,
+          words: [{
+            word: 'Hello',
+            startTime: '0s',
+            endTime: '0.5s',
+          }, {
+            word: 'world',
+            startTime: '0.5s',
+            endTime: '1s',
+          }]
+        }]
+      }]
+    }
+
+    ;(global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(mockResponse),
+    })
+
+    const audioBlob = new Blob(['audio data'], { type: 'audio/webm' })
+    const result = await service.transcribe(audioBlob, {
+      encoding: 'WEBM_OPUS',
+      sampleRateHertz: 16000,
+      languageCode: 'en-US',
+    })
+
+    expect(result.transcript).toBe('Hello world')
+    expect(result.confidence).toBe(0.95)
+    expect(result.segments).toHaveLength(1)
+    expect(result.segments[0].words).toHaveLength(2)
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://speech.googleapis.com/v1/speech:recognize?key=test-api-key',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+    )
+  })
+
+  it('handles API errors gracefully', async () => {
+    ;(global.fetch as any).mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+    })
+
+    const audioBlob = new Blob(['audio data'], { type: 'audio/webm' })
+
+    await expect(service.transcribe(audioBlob, {
+      encoding: 'WEBM_OPUS',
+      sampleRateHertz: 16000,
+      languageCode: 'en-US',
+    })).rejects.toThrow('Google Speech API error: 429')
+  })
+
+  it('handles network errors', async () => {
+    ;(global.fetch as any).mockRejectedValueOnce(
+      new Error('Network error')
+    )
+
+    const audioBlob = new Blob(['audio data'], { type: 'audio/webm' })
+
+    await expect(service.transcribe(audioBlob, {
+      encoding: 'WEBM_OPUS',
+      sampleRateHertz: 16000,
+      languageCode: 'en-US',
+    })).rejects.toThrow('Network error')
+  })
+})
+```
+
+### File Upload Integration Testing
+```typescript
+import { expect, describe, it, vi } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { AudioUpload } from './AudioUpload'
+
+describe('AudioUpload Integration', () => {
+  const user = userEvent.setup()
+
+  it('integrates with file system successfully', async () => {
+    const mockOnFileSelect = vi.fn()
+    const mockOnError = vi.fn()
+
+    render(
+      <AudioUpload
+        accept="audio/*"
+        multiple={true}
+        maxSize={10 * 1024 * 1024} // 10MB
+        onFileSelect={mockOnFileSelect}
+        onError={mockOnError}
+      />
+    )
+
+    // Create a valid audio file
+    const file = new File(
+      ['mock audio content'],
+      'test-audio.mp3',
+      { type: 'audio/mpeg' }
+    )
+
+    // Get the file input (hidden) and simulate file selection
+    const fileInput = screen.getByTestId('file-input')
+    await user.upload(fileInput, file)
+
+    await waitFor(() => {
+      expect(mockOnFileSelect).toHaveBeenCalledWith([file])
+      expect(mockOnError).not.toHaveBeenCalled()
+    })
+  })
+
+  it('handles drag and drop correctly', async () => {
+    const mockOnFileSelect = vi.fn()
+
+    render(
+      <AudioUpload
+        accept="audio/*"
+        multiple={true}
+        onFileSelect={mockOnFileSelect}
+      />
+    )
+
+    const dropzone = screen.getByTestId('dropzone')
+    const files = [
+      new File(['audio1'], 'audio1.mp3', { type: 'audio/mpeg' }),
+      new File(['audio2'], 'audio2.wav', { type: 'audio/wav' }),
+    ]
+
+    // Simulate drag and drop
+    fireEvent.dragOver(dropzone)
+    expect(dropzone).toHaveClass('drag-over')
+
+    const dropEvent = createEvent.drop(dropzone)
+    Object.defineProperty(dropEvent, 'dataTransfer', {
+      value: {
+        files,
+      },
+    })
+    fireEvent(dropzone, dropEvent)
+
+    await waitFor(() => {
+      expect(mockOnFileSelect).toHaveBeenCalledWith(files)
+    })
+  })
+})
+```
+
+## End-to-End Testing
+
+### User Journey Testing
+```typescript
+import { test, expect } from '@playwright/test'
+
+test.describe('Audio Upload and Processing Journey', () => {
+  test('complete user workflow', async ({ page }) => {
+    // Navigate to app
+    await page.goto('/')
+
+    // Check if we're on the dashboard
+    await expect(page).toHaveURL('/')
+
+    // Navigate to upload page
+    await page.click('text=Upload Audio')
+
+    // Verify upload page
+    await expect(page.locator('h1')).toContainText('Upload Audio')
+
+    // Upload a file
+    await page.setInputFiles('input[type="file"]', 'test-audio.mp3')
+
+    // Wait for processing to start
+    await expect(page.locator('text=Processing audio...')).toBeVisible()
+
+    // Wait for completion
+    await expect(page.locator('text=Processing complete')).toBeVisible()
+
+    // Check if transcription appears
+    await expect(page.locator('[data-testid="transcription"]')).toBeVisible()
+
+    // Check if summary is generated
+    await expect(page.locator('[data-testid="summary"]')).toBeVisible()
+
+    // Navigate back to dashboard
+    await page.click('text=Dashboard')
+
+    // Verify session appears in history
+    await expect(page.locator('text=test-audio.mp3')).toBeVisible()
+  })
+
+  test('error handling workflow', async ({ page }) => {
+    await page.goto('/upload')
+
+    // Try to upload an invalid file
+    await page.setInputFiles('input[type="file"]', 'invalid-file.txt')
+
+    // Check for error message
+    await expect(page.locator('text=Unsupported file type')).toBeVisible()
+
+    // Verify user can try again
+    await expect(page.locator('input[type="file"]')).toBeEnabled()
+  })
+})
+```
+
+### PWA Testing
+```typescript
+import { test, expect } from '@playwright/test'
+
+test.describe('PWA Functionality', () => {
+  test('installs as PWA', async ({ page, browserName }) => {
+    // Skip on Firefox as it doesn't support PWA installation in headless mode
+    test.skip(browserName === 'firefox')
+
+    await page.goto('/')
+
+    // Check for install prompt (this may vary by browser)
+    const installButton = page.locator('[data-testid="install-pwa"]')
+    await expect(installButton).toBeVisible()
+
+    // Test offline functionality
+    await page.context().setOffline(true)
+
+    // App should still work with cached content
+    await page.reload()
+    await expect(page.locator('text=Audio Journal')).toBeVisible()
+  })
+
+  test('works offline', async ({ page }) => {
+    await page.goto('/')
+
+    // Go offline
+    await page.context().setOffline(true)
+
+    // Try to access cached pages
+    await page.goto('/history')
+    await expect(page.locator('text=Audio History')).toBeVisible()
+
+    // Try to perform cached actions
+    const cachedSessions = page.locator('[data-testid="cached-session"]')
+    await expect(cachedSessions).toHaveCount(await cachedSessions.count())
+  })
+})
+```
+
+## Mocking Strategies
+
+### API Mocking
+```typescript
+import { vi } from 'vitest'
+
+// Mock Google APIs
+export const mockGoogleSpeechAPI = {
+  transcribe: vi.fn().mockResolvedValue({
+    results: [{
+      alternatives: [{
+        transcript: 'Mock transcription',
+        confidence: 0.95,
+      }]
+    }]
+  })
+}
+
+export const mockGoogleNLAPI = {
+  analyzeEntities: vi.fn().mockResolvedValue({
+    entities: [
+      {
+        name: 'Audio Journal',
+        type: 'WORK_OF_ART',
+        salience: 0.8,
+      }
+    ],
+    documentSentiment: {
+      score: 0.2,
+      magnitude: 1.0,
+    }
+  })
+}
+
+// Mock browser APIs
+export const mockFileAPI = {
+  File: vi.fn().mockImplementation((content, filename, options) => ({
+    name: filename,
+    size: content.length,
+    type: options?.type || 'text/plain',
+    content,
+  })),
+  FileReader: vi.fn().mockImplementation(() => ({
+    readAsDataURL: vi.fn(),
+    readAsText: vi.fn(),
+    onload: null,
+    onerror: null,
+  }))
+}
+
+// Setup function for tests
+export const setupTestEnvironment = () => {
+  // Mock fetch
+  global.fetch = vi.fn()
+
+  // Mock localStorage
+  global.localStorage = {
+    getItem: vi.fn(),
+    setItem: vi.fn(),
+    removeItem: vi.fn(),
+    clear: vi.fn(),
+  }
+
+  // Mock indexedDB
+  global.indexedDB = {
+    open: vi.fn(),
+    deleteDatabase: vi.fn(),
+  }
+}
+```
+
+## Test Utilities
+
+### Custom Matchers
+```typescript
+import { expect } from 'vitest'
+
+expect.extend({
+  toBeValidAudioFile(file) {
+    const validTypes = ['audio/mpeg', 'audio/wav', 'audio/webm', 'audio/mp4']
+    const pass = validTypes.includes(file.type) || file.name.match(/\.(mp3|wav|webm|mp4)$/i)
+
+    return {
+      pass,
+      message: () => `expected ${file.name} to ${pass ? 'not ' : ''}be a valid audio file`,
+    }
+  },
+
+  toHaveTranscription(received, expectedTranscript) {
+    const pass = received.transcript?.includes(expectedTranscript)
+
+    return {
+      pass,
+      message: () => `expected transcription to ${pass ? 'not ' : ''}contain "${expectedTranscript}"`,
+    }
+  },
+
+  toBeWithinBudget(received, budget) {
+    const pass = received.totalCost <= budget
+
+    return {
+      pass,
+      message: () => `expected cost $${received.totalCost} to ${pass ? 'not ' : ''}be within budget $${budget}`,
+    }
+  }
+})
+
+// Type declarations
+declare module 'vitest' {
+  interface Assertion<T = any> {
+    toBeValidAudioFile(): T
+    toHaveTranscription(expected: string): T
+    toBeWithinBudget(budget: number): T
+  }
+}
+```
+
+### Test Data Factories
+```typescript
+import { AudioSession, Task, TranscriptionResult } from '@/types'
+
+// Factory functions for test data
+export const createMockAudioSession = (overrides: Partial<AudioSession> = {}): AudioSession => ({
+  id: 'session-1',
+  fileName: 'test-audio.mp3',
+  fileSize: 1024000,
+  mimeType: 'audio/mpeg',
+  duration: 120,
+  status: 'completed',
+  createdAt: new Date('2024-01-01'),
+  updatedAt: new Date('2024-01-01'),
+  tags: ['meeting', 'important'],
+  categories: ['Business'],
+  isFavorite: false,
+  ...overrides,
+})
+
+export const createMockTranscription = (overrides: Partial<TranscriptionResult> = {}): TranscriptionResult => ({
+  provider: 'google',
+  model: 'latest_long',
+  language: 'en-US',
+  confidence: 0.95,
+  transcript: 'This is a test transcription for testing purposes.',
+  segments: [{
+    id: 'segment-1',
+    startTime: 0,
+    endTime: 5,
+    text: 'This is a test transcription',
+    confidence: 0.95,
+  }],
+  ...overrides,
+})
+
+export const createMockTask = (overrides: Partial<Task> = {}): Task => ({
+  id: 'task-1',
+  sessionId: 'session-1',
+  title: 'Test task',
+  description: 'This is a test task for testing',
+  priority: 'medium',
+  completed: false,
+  createdAt: new Date('2024-01-01'),
+  updatedAt: new Date('2024-01-01'),
+  ...overrides,
+})
+
+// Utility functions
+export const createMockAudioBlob = (size = 1024): Blob => {
+  return new Blob(['x'.repeat(size)], { type: 'audio/webm' })
+}
+
+export const createMockFile = (name: string, type: string, size = 1024): File => {
+  return new File(['x'.repeat(size)], name, { type })
+}
+```
+
+## Performance Testing
+
+### Load Testing
+```typescript
+import { expect, describe, it } from 'vitest'
+
+describe('Performance Tests', () => {
+  it('handles large transcription efficiently', async () => {
+    const startTime = performance.now()
+
+    const largeTranscript = 'Word '.repeat(10000) // 20,000 words
+    const result = await processLargeTranscription(largeTranscript)
+
+    const endTime = performance.now()
+    const duration = endTime - startTime
+
+    expect(duration).toBeLessThan(5000) // Should process in under 5 seconds
+    expect(result.wordCount).toBe(20000)
+  })
+
+  it('maintains performance with multiple concurrent uploads', async () => {
+    const startTime = performance.now()
+
+    const promises = Array.from({ length: 5 }, () =>
+      processAudioUpload(createMockAudioBlob(1024 * 1024)) // 1MB each
+    )
+
+    await Promise.all(promises)
+
+    const endTime = performance.now()
+    const duration = endTime - startTime
+
+    expect(duration).toBeLessThan(10000) // Should complete in under 10 seconds
+  })
+})
+```
+
+## Accessibility Testing
+
+### Screen Reader Testing
+```typescript
+import { expect, describe, it } from 'vitest'
+
+describe('Accessibility Tests', () => {
+  it('has proper ARIA labels', () => {
+    render(<AudioPlayer src="test.mp3" />)
+
+    const playButton = screen.getByRole('button', { name: /play/i })
+    expect(playButton).toHaveAttribute('aria-label', 'Play audio')
+
+    const progressBar = screen.getByRole('progressbar')
+    expect(progressBar).toHaveAttribute('aria-valuenow')
+    expect(progressBar).toHaveAttribute('aria-valuemax')
+  })
+
+  it('supports keyboard navigation', async () => {
+    const user = userEvent.setup()
+    render(<AudioUpload onFileSelect={mockOnFileSelect} />)
+
+    // Tab to upload zone
+    await user.tab()
+    expect(screen.getByTestId('dropzone')).toHaveFocus()
+
+    // Press Enter to trigger file dialog
+    await user.keyboard('{Enter}')
+    // File dialog would open in real browser
+  })
+
+  it('announces dynamic content changes', () => {
+    render(<ProcessingStatus status="processing" />)
+
+    // Simulate status change
+    act(() => {
+      // Change status to completed
+    })
+
+    // Check if screen reader announcement was made
+    const announcement = screen.getByRole('status', { hidden: true })
+    expect(announcement).toHaveTextContent('Processing complete')
+  })
+})
+```
+
+## CI/CD Integration
+
+### Test Configuration
+```typescript
+// vitest.config.ts
+import { defineConfig } from 'vitest/config'
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+    coverage: {
+      reporter: ['text', 'json', 'html', 'lcov'],
+      exclude: [
+        'node_modules/',
+        'src/test/',
+        '**/*.d.ts',
+        '**/*.config.*',
+        '**/index.html',
+      ],
+      thresholds: {
+        global: {
+          branches: 80,
+          functions: 80,
+          lines: 80,
+          statements: 80,
+        },
+      },
+    },
+    testTimeout: 10000,
+    hookTimeout: 10000,
+  },
+})
+```
+
+### GitHub Actions Workflow
+```yaml
+name: Test Suite
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - run: npm ci
+      - run: npm run test:coverage
+      - uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage/lcov.info
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - run: npx playwright install
+      - run: npm run test:e2e
+```
+
+This comprehensive testing strategy ensures reliability, performance, and accessibility of the Audio Journal PWA across all scenarios and user interactions.

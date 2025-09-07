@@ -1,0 +1,271 @@
+---
+description: Define TypeScript types and interfaces for Audio Journal data models
+globs: src/types/**/*.ts
+alwaysApply: true
+---
+
+# TypeScript Types and Interfaces
+
+## Interface Naming Conventions
+- Use PascalCase for interface names
+- Add descriptive suffixes: `AudioSession`, `TranscriptionResult`, `TaskData`
+- Prefer interfaces over types for object shapes
+- Use descriptive property names with auxiliary verbs: `isLoading`, `hasError`
+
+## Core Data Models
+
+### AudioSession Interface
+```typescript
+interface AudioSession {
+  // Primary identifiers
+  id: string;
+  userId?: string;
+
+  // File metadata
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  duration: number;
+  sampleRate: number;
+  channels: number;
+
+  // Timestamps
+  createdAt: Date;
+  updatedAt: Date;
+  processedAt?: Date;
+
+  // Processing status
+  status: ProcessingStatus;
+  progress: number;
+
+  // Processing results
+  transcription?: TranscriptionResult;
+  summary?: SummaryResult;
+  tasks: Task[];
+  tags: string[];
+  categories: string[];
+
+  // Storage references
+  audioBlobId?: string;
+  thumbnailUrl?: string;
+
+  // User preferences
+  isFavorite: boolean;
+  retentionDate?: Date;
+  customMetadata: Record<string, any>;
+}
+```
+
+### ProcessingStatus Enum
+```typescript
+enum ProcessingStatus {
+  UPLOADING = 'uploading',
+  UPLOADED = 'uploaded',
+  VALIDATING = 'validating',
+  TRANSCRIBING = 'transcribing',
+  SUMMARIZING = 'summarizing',
+  EXTRACTING_TASKS = 'extracting_tasks',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+  CANCELLED = 'cancelled'
+}
+```
+
+### Task Interface
+```typescript
+interface Task {
+  id: string;
+  sessionId: string;
+  userId?: string;
+
+  // Task content
+  title: string;
+  description?: string;
+  category?: string;
+
+  // Timing
+  createdAt: Date;
+  updatedAt: Date;
+  completedAt?: Date;
+  dueDate?: Date;
+
+  // Status and priority
+  status: TaskStatus;
+  priority: TaskPriority;
+  completed: boolean;
+
+  // Source information
+  sourceSegmentId?: string;
+  sourceText?: string;
+
+  // User assignments
+  assignee?: string;
+  tags: string[];
+
+  // Metadata
+  confidence: number;
+  customFields: Record<string, any>;
+}
+```
+
+## API Types
+
+### Google Speech-to-Text
+```typescript
+interface SpeechConfig {
+  encoding: 'WEBM_OPUS' | 'MP3' | 'WAV' | 'M4A';
+  sampleRateHertz: 16000 | 44100 | 48000;
+  languageCode: string;
+  enableSpeakerDiarization: boolean;
+  enableAutomaticPunctuation: boolean;
+  enableWordTimeOffsets: boolean;
+  model: 'latest_long' | 'latest_short';
+  useEnhanced: boolean;
+}
+
+interface TranscriptionResult {
+  provider: 'google' | 'azure' | 'local';
+  model: string;
+  language: string;
+  confidence: number;
+  audioDuration: number;
+  processingTime: number;
+  transcript: string;
+  segments: TranscriptionSegment[];
+  speakers?: SpeakerInfo[];
+}
+```
+
+### Google Cloud Natural Language API Integration
+```typescript
+interface GoogleNLConfig {
+  apiKey: string;
+  model?: string;
+  features: ('entities' | 'sentiment' | 'syntax' | 'categories')[];
+  language?: string;
+}
+
+interface GoogleNLResponse {
+  documentSentiment?: {
+    magnitude: number;
+    score: number;
+  };
+  language: string;
+  entities?: Array<{
+    name: string;
+    type: string;
+    salience: number;
+    mentions?: Array<{
+      text: {
+        content: string;
+        beginOffset: number;
+      };
+      type: string;
+    }>;
+  }>;
+  categories?: Array<{
+    name: string;
+    confidence: number;
+  }>;
+}
+
+interface SummaryResult {
+  summary: string;
+  keyPoints: string[];
+  topics: string[];
+  provider: 'google' | 'local';
+  model: string;
+  generatedAt: Date;
+  confidence: number;
+  wordCount: number;
+  compressionRatio: number;
+  alternatives?: SummaryAlternative[];
+}
+```
+
+## Component Props Types
+
+### UploadZone Props
+```typescript
+interface UploadZoneProps {
+  accept?: string;
+  multiple?: boolean;
+  maxSize?: number;
+  disabled?: boolean;
+  loading?: boolean;
+  onFilesSelected: (files: File[]) => void;
+  onError?: (error: string) => void;
+  children?: React.ReactNode;
+}
+```
+
+### AudioPlayer Props
+```typescript
+interface AudioPlayerProps {
+  src: string;
+  duration?: number;
+  waveformData?: number[];
+  showWaveform?: boolean;
+  showTimestamps?: boolean;
+  onTimeUpdate?: (time: number) => void;
+  onPlay?: () => void;
+  onPause?: () => void;
+  onError?: (error: Error) => void;
+  className?: string;
+}
+```
+
+## Utility Types
+
+### API Response Types
+```typescript
+interface ApiResponse<T> {
+  data: T;
+  success: boolean;
+  message?: string;
+  error?: string;
+  timestamp: Date;
+}
+
+interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+}
+```
+
+### Form Types
+```typescript
+interface FormField<T = any> {
+  name: string;
+  label: string;
+  type: 'text' | 'email' | 'password' | 'number' | 'select' | 'textarea';
+  value: T;
+  error?: string;
+  required?: boolean;
+  placeholder?: string;
+  options?: Array<{ label: string; value: any }>;
+  validation?: (value: T) => string | null;
+}
+
+interface FormState {
+  isSubmitting: boolean;
+  isValid: boolean;
+  errors: Record<string, string>;
+  touched: Record<string, boolean>;
+}
+```
+
+## Best Practices
+- Use union types for API responses: `data: T | null`
+- Implement proper error types: `error?: ApiError`
+- Use generic types for reusable components
+- Implement strict null checks with optional chaining
+- Use discriminated unions for complex state management
+- Document complex interfaces with JSDoc comments

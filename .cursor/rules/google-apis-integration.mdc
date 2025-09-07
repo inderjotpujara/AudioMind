@@ -1,0 +1,639 @@
+---
+description: Define patterns for Google Cloud APIs integration and best practices
+globs: src/lib/google/**/*.ts
+alwaysApply: true
+---
+
+# Google Cloud APIs Integration
+
+## Overview
+
+Audio Journal PWA uses Google Cloud APIs exclusively for all AI and processing services:
+- Google Cloud Speech-to-Text API for transcription
+- Google Cloud Natural Language API for text analysis and summarization
+- Google Cloud Storage (optional) for large file processing
+
+## API Key Management
+
+### Secure Key Storage
+```typescript
+interface GoogleAPIKeys {
+  speechToText: string;      // Google Cloud Speech-to-Text API key
+  naturalLanguage: string;  // Google Cloud Natural Language API key
+  storage?: string;          // Google Cloud Storage API key (optional)
+}
+
+class GoogleAPIKeyManager {
+  private static readonly STORAGE_KEY = 'google_api_keys';
+
+  static async encryptKeys(keys: GoogleAPIKeys): Promise<string> {
+    // Use Web Crypto API for client-side encryption
+    const encoder = new TextEncoder();
+    const data = encoder.encode(JSON.stringify(keys));
+
+    // Generate a key from user password (in real implementation)
+    const key = await crypto.subtle.generateKey(
+      { name: 'AES-GCM', length: 256 },
+      true,
+      ['encrypt', 'decrypt']
+    );
+
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encrypted = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      data
+    );
+
+    return btoa(JSON.stringify({
+      key: await crypto.subtle.exportKey('raw', key),
+      iv: Array.from(iv),
+      data: Array.from(new Uint8Array(encrypted))
+    }));
+  }
+
+  static async decryptKeys(encryptedData: string): Promise<GoogleAPIKeys> {
+    const { key: keyData, iv: ivData, data: encrypted } = JSON.parse(atob(encryptedData));
+
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new Uint8Array(keyData),
+      'AES-GCM',
+      false,
+      ['decrypt']
+    );
+
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: new Uint8Array(ivData) },
+      key,
+      new Uint8Array(encrypted)
+    );
+
+    const decoder = new TextDecoder();
+    return JSON.parse(decoder.decode(decrypted));
+  }
+}
+```
+
+## Google Cloud Speech-to-Text API
+
+### Enhanced Configuration
+```typescript
+interface GoogleSpeechConfig {
+  encoding: 'LINEAR16' | 'FLAC' | 'MULAW' | 'AMR' | 'AMR_WB' | 'OGG_OPUS' | 'SPEEX_WITH_HEADER_BYTE' | 'WEBM_OPUS';
+  sampleRateHertz: 8000 | 16000 | 22050 | 24000 | 32000 | 44100 | 48000;
+  languageCode: string;
+  maxAlternatives: number;
+  profanityFilter: boolean;
+  enableAutomaticPunctuation: boolean;
+  enableSpokenPunctuation: boolean;
+  enableSpokenEmojis: boolean;
+  enableWordTimeOffsets: boolean;
+  enableWordConfidence: boolean;
+  enableSpeakerDiarization: boolean;
+  diarizationSpeakerCount?: number;
+  diarizationMinSpeakerCount?: number;
+  diarizationMaxSpeakerCount?: number;
+  model: 'latest_long' | 'latest_short' | 'command_and_search' | 'phone_call' | 'video' | 'default';
+  useEnhanced: boolean;
+}
+
+const DEFAULT_GOOGLE_SPEECH_CONFIG: GoogleSpeechConfig = {
+  encoding: 'WEBM_OPUS',
+  sampleRateHertz: 16000,
+  languageCode: 'en-US',
+  maxAlternatives: 1,
+  profanityFilter: false,
+  enableAutomaticPunctuation: true,
+  enableSpokenPunctuation: false,
+  enableSpokenEmojis: false,
+  enableWordTimeOffsets: true,
+  enableWordConfidence: true,
+  enableSpeakerDiarization: true,
+  diarizationMinSpeakerCount: 1,
+  diarizationMaxSpeakerCount: 6,
+  model: 'latest_long',
+  useEnhanced: true,
+};
+```
+
+### Advanced Features Implementation
+```typescript
+class GoogleSpeechToTextService {
+  private readonly apiKey: string;
+  private readonly baseUrl = 'https://speech.googleapis.com/v1';
+
+  constructor(apiKey: string) {
+    this.apiKey = apiKey;
+  }
+
+  async transcribeWithDiarization(
+    audioBlob: Blob,
+    config: GoogleSpeechConfig
+  ): Promise<TranscriptionResult> {
+    const request = {
+      config: {
+        ...config,
+        enableSpeakerDiarization: true,
+        diarizationMinSpeakerCount: config.diarizationMinSpeakerCount || 1,
+        diarizationMaxSpeakerCount: config.diarizationMaxSpeakerCount || 6,
+      },
+      audio: {
+        content: await this.blobToBase64(audioBlob),
+      },
+    };
+
+    const response = await fetch(
+      `${this.baseUrl}/speech:recognize?key=${this.apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Google Speech API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return this.processDiarizationResponse(data, config);
+  }
+
+  private processDiarizationResponse(
+    data: any,
+    config: GoogleSpeechConfig
+  ): TranscriptionResult {
+    const transcript = data.results
+      .map((result: any) => result.alternatives[0].transcript)
+      .join(' ');
+
+    const speakers = new Map<number, SpeakerInfo>();
+
+    // Process words with speaker tags
+    data.results.forEach((result: any) => {
+      result.alternatives[0].words?.forEach((word: any) => {
+        const speakerTag = word.speakerTag;
+        if (speakerTag) {
+          if (!speakers.has(speakerTag)) {
+            speakers.set(speakerTag, {
+              id: speakerTag,
+              name: `Speaker ${speakerTag}`,
+              segments: [],
+              totalDuration: 0,
+              color: this.getSpeakerColor(speakerTag),
+            });
+          }
+          speakers.get(speakerTag)!.totalDuration += word.endTime - word.startTime;
+        }
+      });
+    });
+
+    return {
+      provider: 'google',
+      model: config.model,
+      language: config.languageCode,
+      confidence: data.results[0]?.alternatives[0]?.confidence || 0,
+      transcript,
+      segments: this.extractSegments(data),
+      speakers: Array.from(speakers.values()),
+    };
+  }
+
+  private getSpeakerColor(speakerId: number): string {
+    const colors = [
+      '#3b82f6', '#ef4444', '#10b981', '#f59e0b',
+      '#8b5cf6', '#06b6d4', '#f97316', '#84cc16'
+    ];
+    return colors[(speakerId - 1) % colors.length];
+  }
+
+  private extractSegments(data: any): TranscriptionSegment[] {
+    const segments: TranscriptionSegment[] = [];
+
+    data.results?.forEach((result: any, resultIndex: number) => {
+      const alternative = result.alternatives[0];
+      if (alternative.transcript) {
+        segments.push({
+          id: `segment-${resultIndex}`,
+          startTime: alternative.words?.[0]?.startTime || 0,
+          endTime: alternative.words?.[alternative.words.length - 1]?.endTime || 0,
+          text: alternative.transcript,
+          confidence: alternative.confidence || 0,
+          words: alternative.words?.map((word: any) => ({
+            word: word.word,
+            startTime: word.startTime,
+            endTime: word.endTime,
+            confidence: word.confidence,
+          })),
+          speakerId: alternative.words?.[0]?.speakerTag,
+        });
+      }
+    });
+
+    return segments;
+  }
+
+  private async blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+}
+```
+
+## Google Cloud Natural Language API
+
+### Comprehensive Text Analysis
+```typescript
+interface GoogleNLAnalysisConfig {
+  extractSyntax: boolean;
+  extractEntities: boolean;
+  extractDocumentSentiment: boolean;
+  extractEntitySentiment: boolean;
+  classifyText: boolean;
+  summarizeText: boolean;
+  language?: string;
+}
+
+class GoogleNaturalLanguageService {
+  private readonly apiKey: string;
+  private readonly baseUrl = 'https://language.googleapis.com/v1';
+
+  constructor(apiKey: string) {
+    this.apiKey = apiKey;
+  }
+
+  async analyzeDocument(
+    text: string,
+    config: GoogleNLAnalysisConfig
+  ): Promise<GoogleNLDocumentAnalysis> {
+    const features: any = {};
+
+    if (config.extractSyntax) features.extractSyntax = true;
+    if (config.extractEntities) features.extractEntities = true;
+    if (config.extractDocumentSentiment) features.extractDocumentSentiment = true;
+    if (config.extractEntitySentiment) features.extractEntitySentiment = true;
+    if (config.classifyText) features.classifyText = true;
+    if (config.summarizeText) features.summarizeText = true;
+
+    const request = {
+      document: {
+        type: 'PLAIN_TEXT',
+        content: text,
+        language: config.language,
+      },
+      features,
+      encodingType: 'UTF8',
+    };
+
+    const response = await fetch(
+      `${this.baseUrl}/documents:analyzeEntities?key=${this.apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Google NL API error: ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  async generateSmartSummary(
+    transcript: string,
+    analysis: GoogleNLDocumentAnalysis
+  ): Promise<SmartSummary> {
+    // Use multiple NL features to create intelligent summaries
+    const entities = analysis.entities || [];
+    const categories = analysis.categories || [];
+    const sentiment = analysis.documentSentiment;
+
+    // Extract key topics from entities and categories
+    const topics = this.extractKeyTopics(entities, categories);
+
+    // Generate sentiment-aware summary
+    const sentimentPrefix = this.getSentimentPrefix(sentiment);
+
+    // Create summary using most salient entities
+    const topEntities = entities
+      .sort((a, b) => (b.salience || 0) - (a.salience || 0))
+      .slice(0, 5);
+
+    const summary = this.buildSummaryFromEntities(sentimentPrefix, topEntities, transcript);
+
+    return {
+      summary,
+      keyPoints: this.extractKeyPoints(entities, transcript),
+      topics,
+      sentiment: sentiment ? {
+        score: sentiment.score,
+        magnitude: sentiment.magnitude,
+        label: this.getSentimentLabel(sentiment.score),
+      } : undefined,
+      confidence: 0.85, // Google NL typically provides high confidence
+    };
+  }
+
+  private extractKeyTopics(
+    entities: GoogleNLEntity[],
+    categories: GoogleNLCategory[]
+  ): string[] {
+    const topics = new Set<string>();
+
+    // Add topics from categories
+    categories.forEach(category => {
+      if (category.confidence > 0.7) {
+        const topic = category.name.split('/').pop();
+        if (topic) topics.add(topic);
+      }
+    });
+
+    // Add topics from high-salience entities
+    entities.forEach(entity => {
+      if (entity.salience && entity.salience > 0.1) {
+        topics.add(entity.name);
+      }
+    });
+
+    return Array.from(topics).slice(0, 8);
+  }
+
+  private getSentimentPrefix(sentiment?: GoogleNLSentiment): string {
+    if (!sentiment) return '';
+
+    const { score } = sentiment;
+    if (score > 0.3) return 'The discussion was generally positive. ';
+    if (score < -0.3) return 'The discussion addressed some challenges. ';
+    return '';
+  }
+
+  private getSentimentLabel(score: number): string {
+    if (score > 0.3) return 'positive';
+    if (score < -0.3) return 'negative';
+    return 'neutral';
+  }
+
+  private buildSummaryFromEntities(
+    prefix: string,
+    entities: GoogleNLEntity[],
+    transcript: string
+  ): string {
+    if (entities.length === 0) {
+      // Fallback to extractive summary
+      const sentences = transcript.split(/[.!?]+/).filter(s => s.trim().length > 20);
+      return prefix + sentences.slice(0, 2).join('. ').trim() + '.';
+    }
+
+    const entityNames = entities.map(e => e.name);
+    const summary = `${prefix}The discussion focused on ${entityNames.slice(0, 3).join(', ')}`;
+
+    if (entityNames.length > 3) {
+      summary += ` and ${entityNames.length - 3} other topics`;
+    }
+
+    return summary + '.';
+  }
+
+  private extractKeyPoints(
+    entities: GoogleNLEntity[],
+    transcript: string
+  ): string[] {
+    const keyPoints: string[] = [];
+
+    // Extract sentences containing high-salience entities
+    const sentences = transcript.split(/[.!?]+/);
+    const topEntities = entities
+      .filter(e => e.salience && e.salience > 0.05)
+      .slice(0, 5);
+
+    sentences.forEach(sentence => {
+      const sentenceLower = sentence.toLowerCase();
+      const hasKeyEntity = topEntities.some(entity =>
+        sentenceLower.includes(entity.name.toLowerCase())
+      );
+
+      if (hasKeyEntity && sentence.trim().length > 20) {
+        keyPoints.push(sentence.trim());
+      }
+    });
+
+    return keyPoints.slice(0, 5);
+  }
+}
+
+// Type definitions
+interface GoogleNLDocumentAnalysis {
+  documentSentiment?: GoogleNLSentiment;
+  entities?: GoogleNLEntity[];
+  categories?: GoogleNLCategory[];
+}
+
+interface GoogleNLSentiment {
+  score: number;
+  magnitude: number;
+}
+
+interface GoogleNLEntity {
+  name: string;
+  type: string;
+  salience?: number;
+  mentions?: Array<{
+    text: {
+      content: string;
+      beginOffset: number;
+    };
+    type: string;
+  }>;
+}
+
+interface GoogleNLCategory {
+  name: string;
+  confidence: number;
+}
+
+interface SmartSummary {
+  summary: string;
+  keyPoints: string[];
+  topics: string[];
+  sentiment?: {
+    score: number;
+    magnitude: number;
+    label: string;
+  };
+  confidence: number;
+}
+```
+
+## Cost Optimization
+
+### Usage Tracking and Budgeting
+```typescript
+interface GoogleAPIUsage {
+  speechToText: {
+    characters: number;
+    cost: number;
+  };
+  naturalLanguage: {
+    units: number;
+    cost: number;
+  };
+  totalCost: number;
+  periodStart: Date;
+  periodEnd: Date;
+}
+
+class GoogleAPICostTracker {
+  private static readonly STORAGE_KEY = 'google_api_usage';
+
+  static trackSpeechUsage(characters: number): void {
+    // Google Speech-to-Text pricing: $0.006 per 15 seconds
+    const cost = (characters / 15000) * 0.006; // Approximation
+    this.updateUsage('speechToText', { characters, cost });
+  }
+
+  static trackNLUsage(units: number): void {
+    // Google NL pricing: $0.0005 per unit (1000 characters)
+    const cost = (units / 1000) * 0.0005;
+    this.updateUsage('naturalLanguage', { units, cost });
+  }
+
+  private static updateUsage(
+    service: keyof Omit<GoogleAPIUsage, 'totalCost' | 'periodStart' | 'periodEnd'>,
+    update: { characters?: number; units?: number; cost: number }
+  ): void {
+    const usage = this.getCurrentUsage();
+
+    if (service === 'speechToText' && update.characters) {
+      usage.speechToText.characters += update.characters;
+      usage.speechToText.cost += update.cost;
+    } else if (service === 'naturalLanguage' && update.units) {
+      usage.naturalLanguage.units += update.units;
+      usage.naturalLanguage.cost += update.cost;
+    }
+
+    usage.totalCost = usage.speechToText.cost + usage.naturalLanguage.cost;
+
+    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(usage));
+  }
+
+  static getCurrentUsage(): GoogleAPIUsage {
+    const stored = localStorage.getItem(this.STORAGE_KEY);
+    if (!stored) {
+      return {
+        speechToText: { characters: 0, cost: 0 },
+        naturalLanguage: { units: 0, cost: 0 },
+        totalCost: 0,
+        periodStart: new Date(),
+        periodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+      };
+    }
+    return JSON.parse(stored);
+  }
+
+  static checkBudgetLimit(limit: number): boolean {
+    return this.getCurrentUsage().totalCost <= limit;
+  }
+}
+```
+
+## Error Handling
+
+### Google API Error Types
+```typescript
+interface GoogleAPIError {
+  code: number;
+  message: string;
+  status: string;
+  details?: Array<{
+    '@type': string;
+    fieldViolations?: Array<{
+      field: string;
+      description: string;
+    }>;
+  }>;
+}
+
+class GoogleAPIErrorHandler {
+  static isRetryableError(error: GoogleAPIError): boolean {
+    const retryableCodes = [
+      500, // Internal Server Error
+      502, // Bad Gateway
+      503, // Service Unavailable
+      504, // Gateway Timeout
+      429, // Too Many Requests
+    ];
+
+    return retryableCodes.includes(error.code);
+  }
+
+  static getRetryDelay(attempt: number, error: GoogleAPIError): number {
+    if (error.code === 429) {
+      // Exponential backoff for rate limiting
+      return Math.min(Math.pow(2, attempt) * 1000, 30000);
+    }
+
+    // Standard retry delay
+    return Math.min(attempt * 1000, 10000);
+  }
+
+  static getErrorMessage(error: GoogleAPIError): string {
+    switch (error.code) {
+      case 400:
+        return 'Invalid request. Please check your input.';
+      case 401:
+        return 'API key is invalid or expired.';
+      case 403:
+        return 'API access denied. Check your permissions.';
+      case 404:
+        return 'API endpoint not found.';
+      case 429:
+        return 'API rate limit exceeded. Please try again later.';
+      case 500:
+      case 502:
+      case 503:
+      case 504:
+        return 'Google service temporarily unavailable. Please try again.';
+      default:
+        return error.message || 'An unexpected error occurred.';
+    }
+  }
+}
+```
+
+## Best Practices
+
+### API Key Security
+- Store API keys encrypted in localStorage
+- Never expose keys in client-side code
+- Use different keys for different services
+- Rotate keys regularly
+- Monitor API usage and costs
+
+### Performance Optimization
+- Batch requests when possible
+- Use appropriate model sizes for cost/accuracy balance
+- Cache results locally when appropriate
+- Implement request deduplication
+- Use streaming for large audio files
+
+### Error Recovery
+- Implement exponential backoff for retries
+- Provide clear error messages to users
+- Fall back to local processing when APIs are unavailable
+- Log errors for debugging and improvement
+
+### Cost Management
+- Track usage and costs in real-time
+- Set budget limits and alerts
+- Use the most cost-effective models for each use case
+- Optimize request frequency and size

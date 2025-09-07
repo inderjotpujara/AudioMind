@@ -1,0 +1,313 @@
+# Audio Journal PWA - Development Guidelines
+
+## Project Overview
+You are working on Audio Journal PWA, a privacy-first Progressive Web App that transforms daily audio recordings into structured insights through AI-powered summarization and task extraction.
+
+## Core Principles
+- **Privacy-First**: All data stored locally with optional cloud backup
+- **Performance-First**: Optimize for speed and efficiency
+- **Accessibility-First**: WCAG 2.1 AA compliance
+- **Mobile-First**: Responsive design across all devices
+- **Type-Safe**: Strict TypeScript implementation
+
+## Technology Stack
+- **Frontend**: React 18 + TypeScript + Vite
+- **State Management**: Zustand + TanStack React Query
+- **Styling**: TailwindCSS + Headless UI + Framer Motion
+- **Audio Processing**: WaveSurfer.js + Google Cloud Speech-to-Text
+- **Local Storage**: Dexie.js (IndexedDB)
+- **Build Tool**: Vite
+- **Testing**: Vitest + React Testing Library + Playwright
+
+## Code Style & Structure
+
+### TypeScript Standards
+- Use strict TypeScript configuration
+- Prefer interfaces over types for object shapes
+- Use descriptive type names with PascalCase
+- Implement proper error types and union types for API responses
+
+### Component Structure
+```typescript
+// Order: component declaration, styled components (if any), TypeScript types
+interface ComponentProps {
+  // Props interface first
+}
+
+function ComponentName({ prop }: ComponentProps) {
+  // Component logic
+  return (
+    // JSX
+  );
+}
+
+// Export at bottom
+export default ComponentName;
+```
+
+### File Structure
+```
+src/
+├── components/
+│   ├── ui/           # Reusable UI components (Button, Input, etc.)
+│   ├── features/     # Feature-specific components
+│   └── layout/       # Layout components (Header, Sidebar, etc.)
+├── hooks/            # Custom React hooks
+├── lib/              # Utility functions and configurations
+├── stores/           # Zustand stores
+├── types/            # TypeScript type definitions
+├── workers/          # Web Workers for heavy tasks
+└── assets/           # Static assets
+```
+
+### Naming Conventions
+- **Components**: PascalCase (e.g., `AudioUpload`, `TranscriptionView`)
+- **Hooks**: camelCase with `use` prefix (e.g., `useAudioProcessing`)
+- **Stores**: camelCase with descriptive names (e.g., `audioStore`, `uiStore`)
+- **Types**: PascalCase with descriptive suffixes (e.g., `AudioSession`, `TranscriptionResult`)
+- **Files**: kebab-case for components, camelCase for utilities
+- **Directories**: lowercase with dashes (e.g., `components/auth-wizard`)
+
+## React Best Practices
+
+### Minimize Client Components
+- Prefer Server Components (RSC) over Client Components
+- Use `'use client'` directive only when necessary
+- Minimize `useEffect` usage; prefer event handlers and data fetching hooks
+
+### State Management
+- Use Zustand for global state
+- Use React Query for server state and API calls
+- Keep local component state minimal
+- Implement proper loading and error states
+
+### Performance Optimization
+- Implement dynamic imports for code splitting
+- Use `React.memo` for expensive components
+- Optimize re-renders with proper dependency arrays
+- Implement virtual scrolling for large lists
+
+## UI/UX Guidelines
+
+### Design System
+- **Primary Colors**: Blue palette (#3b82f6, #2563eb, #1d4ed8)
+- **Neutral Colors**: Gray palette (#f9fafb, #f3f4f6, #6b7280, #1f2937, #111827)
+- **Semantic Colors**: Green (#10b981), Orange (#f59e0b), Red (#ef4444)
+
+### Typography
+- **Primary Font**: Inter (system fallback: -apple-system, BlinkMacSystemFont)
+- **Mono Font**: JetBrains Mono (fallback: Consolas, Monaco)
+- **Scale**: 12px, 14px, 16px, 18px, 24px, 32px, 48px
+
+### Layout System
+- **Grid**: 12-column CSS Grid with 24px gutters
+- **Breakpoints**: 375px (mobile), 768px (tablet), 1024px (desktop)
+- **Spacing**: 4px base unit (4, 8, 12, 16, 24, 32, 48, 64px)
+
+### Component Patterns
+- Use composition over inheritance
+- Implement proper loading states with skeleton screens
+- Handle error states gracefully with recovery actions
+- Ensure keyboard navigation and screen reader support
+
+## Audio Processing
+
+### File Handling
+- Support common audio formats: MP3, WAV, WebM, M4A
+- Implement file validation (size limits, format checking)
+- Use File System Access API for advanced file operations
+- Handle large files with streaming/chunking
+
+### Google Speech-to-Text Integration
+```typescript
+interface SpeechConfig {
+  encoding: 'WEBM_OPUS' | 'MP3' | 'WAV';
+  sampleRateHertz: number;
+  languageCode: string;
+  enableSpeakerDiarization: boolean;
+  enableAutomaticPunctuation: boolean;
+  enableWordTimeOffsets: boolean;
+  model: 'latest_long' | 'latest_short';
+}
+```
+
+## Local Storage Schema
+
+### Audio Session Structure
+```typescript
+interface AudioSession {
+  id: string;
+  fileName: string;
+  uploadDate: Date;
+  duration: number;
+  transcription?: TranscriptionResult;
+  summary?: string;
+  tasks: Task[];
+  tags: string[];
+  audioBlob?: Blob;
+}
+
+interface Task {
+  id: string;
+  sessionId: string;
+  title: string;
+  description?: string;
+  dueDate?: Date;
+  priority: 'low' | 'medium' | 'high';
+  completed: boolean;
+  createdAt: Date;
+}
+```
+
+## Error Handling & Validation
+
+### Error Types
+- Implement custom error classes for different error scenarios
+- Use early returns for error conditions
+- Implement guard clauses for preconditions
+- Provide user-friendly error messages
+
+### Form Validation
+- Use Zod for schema validation
+- Implement real-time validation feedback
+- Handle both client-side and server-side validation
+
+## Testing Standards
+
+### Unit Testing
+- Minimum 80% code coverage
+- Test utility functions, hooks, and complex components
+- Use descriptive test names and proper assertions
+
+### Integration Testing
+- Test API integrations with proper mocking
+- Test local storage operations
+- Test file upload workflows
+
+### E2E Testing
+- Test complete user journeys
+- Include mobile and desktop scenarios
+- Test PWA functionality (offline, install, etc.)
+
+## Performance Requirements
+
+### Core Web Vitals
+- **First Contentful Paint**: < 1.5s
+- **Largest Contentful Paint**: < 2.5s
+- **Cumulative Layout Shift**: < 0.1
+- **First Input Delay**: < 100ms
+
+### Bundle Optimization
+- **Bundle Size**: < 500KB gzipped
+- Implement code splitting and lazy loading
+- Optimize images and assets
+- Use modern image formats (WebP)
+
+## Security & Privacy
+
+### Data Protection
+- Implement client-side encryption for sensitive data
+- Store API keys securely in environment variables
+- Implement Content Security Policy headers
+- Force HTTPS connections
+
+### Privacy Measures
+- Local-first approach with optional cloud backup
+- Clear data flow documentation
+- Easy data deletion and export functionality
+- Request minimal permissions only
+
+## Development Workflow
+
+### Code Quality Tools
+```json
+// ESLint Configuration
+{
+  "extends": [
+    "@typescript-eslint/recommended",
+    "plugin:react/recommended",
+    "plugin:react-hooks/recommended",
+    "plugin:a11y/recommended"
+  ],
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "@typescript-eslint/no-unused-vars": "error",
+    "prefer-const": "error",
+    "no-var": "error"
+  }
+}
+
+// Prettier Configuration
+{
+  "semi": true,
+  "trailingComma": "es5",
+  "singleQuote": true,
+  "printWidth": 80,
+  "tabWidth": 2
+}
+```
+
+### Git Workflow
+- Use feature branches for development
+- Write descriptive commit messages
+- Implement pre-commit hooks for linting and testing
+- Use semantic versioning for releases
+
+## Documentation Requirements
+
+### Code Documentation
+- Use JSDoc comments for functions and components
+- Document complex logic with inline comments
+- Maintain API documentation for external integrations
+
+### Component Documentation
+- Document component props and usage examples
+- Include accessibility notes for custom components
+- Document state management patterns
+
+## Deployment & Infrastructure
+
+### Build Process
+- Use Vite for optimized production builds
+- Implement proper environment configuration
+- Set up CI/CD with automated testing and deployment
+
+### PWA Configuration
+```json
+{
+  "name": "Audio Journal",
+  "short_name": "AudioJournal",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3b82f6",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
+```
+
+## Accessibility Standards
+
+### WCAG 2.1 AA Compliance
+- Implement proper ARIA labels and roles
+- Ensure keyboard navigation support
+- Maintain proper color contrast ratios
+- Support screen reader functionality
+
+### Component Accessibility
+- Use semantic HTML elements
+- Implement focus management
+- Provide alternative text for images and icons
+- Support reduced motion preferences
+
+Remember: Focus on creating maintainable, performant, and accessible code that aligns with the privacy-first philosophy of this project.
